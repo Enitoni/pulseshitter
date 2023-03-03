@@ -1,6 +1,6 @@
 use std::io::Stdin;
 
-use pulsectl::controllers::{DeviceControl, SinkController, AppControl};
+use pulsectl::controllers::{AppControl, DeviceControl, SinkController};
 
 fn main() {
     let mut handler = SinkController::create().unwrap();
@@ -19,12 +19,14 @@ fn main() {
 
     let stdin = std::io::stdin();
 
-    let applications = handler.list_applications().expect("Could not get application list");
+    let applications = handler
+        .list_applications()
+        .expect("Could not get application list");
 
     println!("Found {} applications:", applications.len());
 
     for app in applications {
-        println!("{} - {}", app.connection_id, app.name.unwrap());
+        println!("{} - {}", app.index, app.name.unwrap());
     }
 }
 
