@@ -52,7 +52,7 @@ async fn main() {
     let mut parec_stdout = run_parec_stream(device, app);
     let mut stdout = std::io::stdout();
 
-    dickcord::dickcord();
+    dickcord::dickcord().await;
 }
 
 fn run_parec_stream(device: DeviceInfo, app: ApplicationInfo) -> ChildStdout {
