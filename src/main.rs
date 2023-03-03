@@ -1,6 +1,12 @@
-use std::io::Stdin;
+use std::{
+    io::{copy, Stdin, Stdout},
+    process::{ChildStdout, Command},
+};
 
-use pulsectl::controllers::{AppControl, DeviceControl, SinkController};
+use pulsectl::controllers::{
+    types::{ApplicationInfo, DeviceInfo},
+    AppControl, DeviceControl, SinkController,
+};
 
 fn main() {
     let mut handler = SinkController::create().unwrap();
@@ -14,6 +20,7 @@ fn main() {
         "Using device: {}",
         device
             .driver
+            .clone()
             .unwrap_or_else(|| "Unknown driver".to_string())
     );
 
@@ -37,9 +44,52 @@ fn main() {
         .find(|a| a.index == index)
         .expect("Application exists");
 
-    println!("You selected {}", app.name.unwrap());
+    println!("You selected {}", app.name.clone().unwrap());
+
+    let mut parec_stdout = run_parec_stream(device, app);
+    let mut stdout = std::io::stdout();
+
+    let _ = copy(&mut parec_stdout, &mut stdout);
 }
 
+fn run_parec_stream(device: DeviceInfo, app: ApplicationInfo) -> ChildStdout {
+    let mut child = Command::new("parec")
+        .arg("--verbose")
+        .arg("--device")
+        .arg(device.name.unwrap())
+        .arg("--monitor-stream")
+        .arg(app.index.to_string())
+        .arg("--format=s16le")
+        .arg("--rate=4800")
+        .arg("--channels=2")
+        .arg("--latency=1")
+        .arg("--process-time=1")
+        .spawn()
+        .expect("Could not spawn parec instance");
+
+    child.stdout.take().expect("Take stdout from child")
+}
+
+/**
+*
+* spawn("parec", [
+     "--verbose",
+     "--device",
+     source.deviceName,
+     "--monitor-stream",
+     String(source.sinkInputIndex),
+     // discord.js voice 'raw' wants this
+     "--format=s16le",
+     // pin rate and channels to what discord requires
+     "--rate=48000",
+     "--channels=2",
+     // set latency and processing time as low as parec allows and let
+     // pulseaudio do its best instead -- the defaults are very high to
+     // "power saving reasons" which is suboptimal for sharing live audio
+     "--latency=1",
+     "--process-time=1",
+   ])
+*/
 trait Prompt {
     fn prompt(&self, message: &str) -> String;
 }
