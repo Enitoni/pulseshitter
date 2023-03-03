@@ -30,7 +30,7 @@ fn main() {
     }
 
     let index = stdin.prompt("Select the id of the application you want to stream");
-    let index: u32 = index.parse().expect("Failed to parse input");
+    let index: u32 = index.trim().parse().expect("Failed to parse input");
 
     let app = applications
         .into_iter()
