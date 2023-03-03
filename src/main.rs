@@ -8,7 +8,10 @@ use pulsectl::controllers::{
     AppControl, DeviceControl, SinkController,
 };
 
-fn main() {
+mod dickcord;
+
+#[tokio::main]
+async fn main() {
     let mut handler = SinkController::create().unwrap();
 
     let device = handler
@@ -49,7 +52,7 @@ fn main() {
     let mut parec_stdout = run_parec_stream(device, app);
     let mut stdout = std::io::stdout();
 
-    let _ = copy(&mut parec_stdout, &mut stdout);
+    dickcord::dickcord();
 }
 
 fn run_parec_stream(device: DeviceInfo, app: ApplicationInfo) -> ChildStdout {
