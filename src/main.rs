@@ -34,10 +34,10 @@ fn main() {
 
     let app = applications
         .into_iter()
-        .find(|a| a.client.unwrap() == index)
+        .find(|a| a.index == index)
         .expect("Application exists");
 
-    println!("You selected {}", app.index);
+    println!("You selected {}", app.name.unwrap());
 }
 
 trait Prompt {
