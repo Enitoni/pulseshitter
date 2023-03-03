@@ -1,6 +1,6 @@
 use std::{
     io::{copy, Stdin, Stdout},
-    process::{ChildStdout, Command},
+    process::{ChildStderr, ChildStdout, Command},
 };
 
 use pulsectl::controllers::{
@@ -52,7 +52,7 @@ fn main() {
     let _ = copy(&mut parec_stdout, &mut stdout);
 }
 
-fn run_parec_stream(device: DeviceInfo, app: ApplicationInfo) -> ChildStdout {
+fn run_parec_stream(device: DeviceInfo, app: ApplicationInfo) -> ChildStderr {
     let mut child = Command::new("parec")
         .arg("--verbose")
         .arg("--device")
@@ -67,7 +67,7 @@ fn run_parec_stream(device: DeviceInfo, app: ApplicationInfo) -> ChildStdout {
         .spawn()
         .expect("Could not spawn parec instance");
 
-    child.stdout.take().expect("Take stdout from child")
+    child.stderr.take().expect("Take stderr from child")
 }
 
 /**
