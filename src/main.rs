@@ -25,17 +25,27 @@ fn main() {
 
     println!("Found {} applications:", applications.len());
 
-    for app in applications {
-        println!("{} - {}", app.index, app.name.unwrap());
+    for app in applications.iter() {
+        println!("{} - {}", app.index, app.name.as_ref().unwrap());
     }
+
+    let index = stdin.prompt("Select the id of the application you want to stream");
+    let index: u32 = index.parse().expect("Failed to parse input");
+
+    let app = applications
+        .into_iter()
+        .find(|a| a.client.unwrap() == index)
+        .expect("Application exists");
+
+    println!("You selected {}", app.index);
 }
 
 trait Prompt {
-    fn prompt(&self, message: String) -> String;
+    fn prompt(&self, message: &str) -> String;
 }
 
 impl Prompt for Stdin {
-    fn prompt(&self, message: String) -> String {
+    fn prompt(&self, message: &str) -> String {
         let mut result = String::new();
         println!("{}: ", message);
 
