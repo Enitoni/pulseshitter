@@ -24,17 +24,7 @@ impl EventHandler for Handler {
         println!("Finding user {}", self.user_id);
 
         let guilds = context.cache.guilds();
-
         println!("Searching in {} guilds", guilds.len());
-
-        let member = find_member_in_guilds(&context, self.user_id, guilds.clone()).await;
-
-        member
-            .expect("User not found")
-            .user
-            .direct_message(&context, |f| f.content("your mother"))
-            .await
-            .unwrap();
 
         let channel = find_voice_channel(&context, self.user_id, guilds.clone())
             .await
@@ -49,24 +39,6 @@ impl EventHandler for Handler {
 
         println!("{}", channel.id)
     }
-}
-
-async fn find_member_in_guilds(
-    context: &Context,
-    user_id: u64,
-    guilds: Vec<GuildId>,
-) -> Option<Member> {
-    for guild in guilds {
-        let members = guild.members(context, None, None).await.unwrap();
-
-        for member in members {
-            if member.user.id == user_id {
-                return Some(member);
-            }
-        }
-    }
-
-    None
 }
 
 async fn find_voice_channel(
