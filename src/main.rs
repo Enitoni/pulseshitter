@@ -39,7 +39,14 @@ async fn main() {
     println!("Found {} applications:", applications.len());
 
     for app in applications.iter() {
-        println!("{} - {}", app.index, app.name.as_ref().unwrap());
+        let full_name = app
+            .proplist
+            .get_str("application.name")
+            .or_else(|| app.proplist.get_str("media.name"))
+            .or_else(|| app.name.as_ref().map(|s| s.to_owned()))
+            .unwrap_or_else(|| "Unknown application".to_string());
+
+        println!("{} - {}", app.index, full_name);
     }
 
     let index = stdin.prompt("Select the id of the application you want to stream");
