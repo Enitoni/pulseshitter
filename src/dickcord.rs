@@ -63,6 +63,7 @@ pub async fn dickcord() {
 
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_VOICE_STATES;
