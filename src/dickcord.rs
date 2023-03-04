@@ -34,6 +34,10 @@ impl EventHandler for Handler {
             .await
             .expect("Could not find voice channel");
 
+        let manager = songbird::get(&context).await.unwrap();
+        let (handler, _) = manager.join(channel.guild_id, channel.id).await;
+        let call = handler.lock().await;
+
         println!("{}", channel.id)
     }
 }
