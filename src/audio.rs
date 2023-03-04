@@ -54,7 +54,7 @@ fn run_parec_stream(device: DeviceInfo, app: ApplicationInfo) -> ChildStdout {
         .arg(device.name.unwrap())
         .arg("--monitor-stream")
         .arg(app.index.to_string())
-        .arg("--format=f32le")
+        .arg("--format=float32le")
         .arg("--rate=48000")
         .arg("--channels=2")
         .arg("--latency=1")
