@@ -3,7 +3,7 @@ use std::env;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
-use serenity::model::prelude::{GuildId, Member};
+use serenity::model::prelude::{ChannelType, GuildChannel, GuildId, Member};
 use serenity::model::user::User;
 use serenity::prelude::*;
 use songbird::SerenityInit;
@@ -21,7 +21,7 @@ impl EventHandler for Handler {
 
         println!("Searching in {} guilds", guilds.len());
 
-        let member = find_member_in_guilds(&context, self.user_id, guilds).await;
+        let member = find_member_in_guilds(&context, self.user_id, guilds.clone()).await;
 
         member
             .expect("User not found")
@@ -29,6 +29,12 @@ impl EventHandler for Handler {
             .direct_message(&context, |f| f.content("your mother"))
             .await
             .unwrap();
+
+        let channel = find_voice_channel(&context, self.user_id, guilds.clone())
+            .await
+            .expect("Could not find voice channel");
+
+        println!("{}", channel.id)
     }
 }
 
@@ -43,6 +49,30 @@ async fn find_member_in_guilds(
         for member in members {
             if member.user.id == user_id {
                 return Some(member);
+            }
+        }
+    }
+
+    None
+}
+
+async fn find_voice_channel(
+    context: &Context,
+    user_id: u64,
+    guilds: Vec<GuildId>,
+) -> Option<GuildChannel> {
+    for guild in guilds {
+        let channels = guild.channels(context).await.unwrap();
+
+        for channel in channels {
+            let channel = channel.1;
+
+            if matches!(channel.kind, ChannelType::Voice) {
+                for member in channel.members(context).await.unwrap() {
+                    if member.user.id == user_id {
+                        return Some(channel.clone());
+                    }
+                }
             }
         }
     }
