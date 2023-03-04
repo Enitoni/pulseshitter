@@ -13,6 +13,8 @@ struct Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, context: Context, ready: Ready) {
+        println!("Finding user {}", self.user_id);
+
         let user = context
             .cache
             .user(self.user_id)
