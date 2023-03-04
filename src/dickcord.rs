@@ -61,11 +61,9 @@ pub async fn dickcord() {
 
     let handler = Handler { user_id };
 
-    let intents = GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::GUILDS
+    let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_VOICE_STATES;
 
     let mut client = Client::builder(&token, intents)
