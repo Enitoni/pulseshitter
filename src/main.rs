@@ -8,6 +8,9 @@ use pulsectl::controllers::{
     AppControl, DeviceControl, SinkController,
 };
 
+use crate::audio::ParecStream;
+
+mod audio;
 mod dickcord;
 
 #[tokio::main]
@@ -49,29 +52,7 @@ async fn main() {
 
     println!("You selected {}", app.name.clone().unwrap());
 
-    let mut parec_stdout = run_parec_stream(device, app);
-    let mut stdout = std::io::stdout();
-
-    dickcord::dickcord().await;
-}
-
-fn run_parec_stream(device: DeviceInfo, app: ApplicationInfo) -> ChildStdout {
-    let mut child = Command::new("parec")
-        .stdout(Stdio::piped())
-        .arg("--verbose")
-        .arg("--device")
-        .arg(device.name.unwrap())
-        .arg("--monitor-stream")
-        .arg(app.index.to_string())
-        .arg("--format=s16le")
-        .arg("--rate=4800")
-        .arg("--channels=2")
-        .arg("--latency=1")
-        .arg("--process-time=1")
-        .spawn()
-        .expect("Could not spawn parec instance");
-
-    child.stdout.take().expect("Take stdout from child")
+    dickcord::dickcord(device, app).await;
 }
 
 /**

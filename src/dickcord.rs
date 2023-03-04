@@ -1,15 +1,21 @@
 use std::env;
 
+use pulsectl::controllers::types::{ApplicationInfo, DeviceInfo};
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::{ChannelType, GuildChannel, GuildId, Member};
 use serenity::model::user::User;
 use serenity::prelude::*;
+use songbird::input::Input;
 use songbird::SerenityInit;
+
+use crate::audio::ParecStream;
 
 struct Handler {
     user_id: u64,
+    device: DeviceInfo,
+    app: ApplicationInfo,
 }
 
 #[async_trait]
@@ -36,7 +42,10 @@ impl EventHandler for Handler {
 
         let manager = songbird::get(&context).await.unwrap();
         let (handler, _) = manager.join(channel.guild_id, channel.id).await;
-        let call = handler.lock().await;
+        let mut call = handler.lock().await;
+
+        let input = ParecStream::new(self.device.clone(), self.app.clone()).into_input();
+        call.play_source(input);
 
         println!("{}", channel.id)
     }
@@ -84,7 +93,7 @@ async fn find_voice_channel(
     None
 }
 
-pub async fn dickcord() {
+pub async fn dickcord(device: DeviceInfo, app: ApplicationInfo) {
     let token =
         env::var("DISCORD_TOKEN").expect("Expected a DISCORD_TOKEN in the environment youi fhfjck");
 
@@ -93,7 +102,11 @@ pub async fn dickcord() {
         .parse()
         .unwrap();
 
-    let handler = Handler { user_id };
+    let handler = Handler {
+        user_id,
+        device,
+        app,
+    };
 
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
