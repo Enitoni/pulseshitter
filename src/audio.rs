@@ -80,6 +80,7 @@ impl Read for AudioStream {
             Some(parec) => {
                 println!("PAREC IS SPAWNED");
                 let result = parec.stdout.read(buf).unwrap();
+                println!("It read {}", result);
 
                 Ok(result)
             }
