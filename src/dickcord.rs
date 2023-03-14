@@ -1,4 +1,5 @@
 use std::env;
+use std::sync::Arc;
 
 use serenity::async_trait;
 use serenity::model::gateway::Ready;
@@ -10,7 +11,7 @@ use crate::audio::AudioSystem;
 
 struct Handler {
     user_id: u64,
-    audio: AudioSystem,
+    audio: Arc<AudioSystem>,
 }
 
 #[async_trait]
@@ -60,7 +61,7 @@ async fn find_voice_channel(
     None
 }
 
-pub async fn dickcord(audio: AudioSystem) {
+pub async fn dickcord(audio: Arc<AudioSystem>) {
     let token =
         env::var("DISCORD_TOKEN").expect("Expected a DISCORD_TOKEN in the environment youi fhfjck");
 
