@@ -54,6 +54,11 @@ impl AudioStream {
         *parec = Some(new_parec);
     }
 
+    pub fn clear(&self) {
+        let mut parec = self.parec.lock().unwrap();
+        *parec = None;
+    }
+
     pub fn into_input(self) -> Input {
         Input::new(
             true,
@@ -142,6 +147,7 @@ impl Parec {
 // We must implement this otherwise when a Parec stream is dropped, the child will continue to live
 impl Drop for Parec {
     fn drop(&mut self) {
+        println!("Parec killed");
         self.child.lock().unwrap().kill().expect("Child killed");
     }
 }
@@ -165,15 +171,11 @@ pub fn run_check_thread(audio: Arc<AudioSystem>) {
 
                     println!("{}", &line);
 
-                    // Parec connected to the wrong device
-                    if line.contains(STREAM_CONNECTED_MESSAGE) && !line.contains(&device) {
-                        println!("Nice try bitch");
-                        break;
-                    }
-
-                    // Parec moved to the wrong device
-                    if line.contains(STREAM_MOVED_MESSAGE) {
-                        println!("AAAAAAAAAAAAAAAAA");
+                    // Parec connected or moved to the wrong device
+                    if line.contains(STREAM_CONNECTED_MESSAGE) && !line.contains(&device)
+                        || line.contains(STREAM_MOVED_MESSAGE)
+                    {
+                        audio.stream.clear();
                         break;
                     }
                 }
