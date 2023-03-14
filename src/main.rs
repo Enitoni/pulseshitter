@@ -39,6 +39,7 @@ async fn main() {
     let audio = Arc::new(AudioSystem::new(pulse));
 
     dickcord::dickcord(audio.clone()).await;
+    println!("DOES IT EVEN GET PAST THIS");
     audio.set_application(app);
 
     AudioSystem::run(audio.clone());
