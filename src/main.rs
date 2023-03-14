@@ -38,10 +38,10 @@ async fn main() {
 
     let audio = Arc::new(AudioSystem::new(pulse));
 
-    AudioSystem::run(audio.clone());
+    dickcord::dickcord(audio.clone()).await;
     audio.set_application(app);
 
-    dickcord::dickcord(audio).await;
+    AudioSystem::run(audio.clone());
 }
 
 trait Prompt {
