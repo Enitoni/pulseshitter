@@ -1,5 +1,7 @@
 use std::{io::Stdin, sync::Arc};
 
+use crate::audio::AudioSystem;
+
 mod audio;
 mod dickcord;
 mod pulse;
@@ -34,9 +36,9 @@ async fn main() {
 
     println!("You selected {}", &app.name);
 
-    let audio = Arc::new(audio::AudioSystem::new(Arc::new(pulse)));
+    let audio = Arc::new(AudioSystem::new(pulse));
 
-    audio::run_check_thread(audio.clone());
+    AudioSystem::run(audio.clone());
     audio.set_application(app);
 
     dickcord::dickcord(audio).await;
