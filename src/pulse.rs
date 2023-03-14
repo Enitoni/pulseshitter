@@ -52,6 +52,7 @@ impl PulseAudio {
 #[derive(Clone)]
 pub struct Application {
     pub name: String,
+    pub sink_input_name: String,
     pub sink_input_index: u32,
 }
 
@@ -66,6 +67,7 @@ impl From<ApplicationInfo> for Application {
 
         Self {
             name: full_name,
+            sink_input_name: info.name.unwrap_or_default(),
             sink_input_index: info.index,
         }
     }
