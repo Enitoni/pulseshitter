@@ -18,7 +18,10 @@ async fn main() {
     let applications = pulse.applications();
 
     for app in applications.iter() {
-        println!("{} - {}", app.sink_input_index, &app.name);
+        println!(
+            "{} - {} ({})",
+            app.sink_input_index, &app.name, &app.sink_input_name
+        );
     }
 
     let index = stdin.prompt("Select the id of the application you want to stream");
