@@ -193,6 +193,8 @@ fn run_check_thread(audio: Arc<AudioSystem>) {
 /// Runs a thread that respawns parec when the selected application is ready again
 fn run_respawn_thread(audio: Arc<AudioSystem>) {
     thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(100));
+
         let stream_cleared = {
             let parec = audio.stream.parec.lock().unwrap();
             parec.is_none()
@@ -217,7 +219,8 @@ fn run_respawn_thread(audio: Arc<AudioSystem>) {
                     .find(|app| app.sink_input_name == selected_app.sink_input_name);
 
                 if let Some(app) = app {
-                    audio.set_application(app)
+                    audio.set_application(app);
+                    break;
                 }
             }
         }
