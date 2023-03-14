@@ -37,13 +37,14 @@ async fn main() {
     println!("You selected {}", &app.name);
 
     let audio = Arc::new(AudioSystem::new(pulse));
-
-    tokio::spawn(dickcord::dickcord(audio.clone()));
+    let discord_thread = tokio::spawn(dickcord::dickcord(audio.clone()));
 
     println!("DOES IT EVEN GET PAST THIS");
 
     audio.set_application(app);
     AudioSystem::run(audio);
+
+    while !discord_thread.is_finished() {}
 }
 
 trait Prompt {
