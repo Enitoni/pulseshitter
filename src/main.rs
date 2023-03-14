@@ -1,52 +1,24 @@
-use std::{
-    io::{copy, Stdin, Stdout},
-    process::{ChildStdout, Command, Stdio},
-};
-
-use pulsectl::controllers::{
-    types::{ApplicationInfo, DeviceInfo},
-    AppControl, DeviceControl, SinkController,
-};
-
-use crate::audio::ParecStream;
+use std::{io::Stdin, sync::Arc};
 
 mod audio;
 mod dickcord;
+mod pulse;
 
 #[tokio::main]
 async fn main() {
-    let mut handler = SinkController::create().unwrap();
+    let pulse = pulse::PulseAudio::new();
 
-    let device = handler
-        .get_default_device()
-        .expect("Could not get default device");
+    // Run this once to get list of applications
+    pulse.update_applications();
 
     println!("Pulseshitter");
-    println!(
-        "Using device: {}",
-        device
-            .driver
-            .clone()
-            .unwrap_or_else(|| "Unknown driver".to_string())
-    );
+    println!("Using device: {}", pulse.device_name());
 
     let stdin = std::io::stdin();
-
-    let applications = handler
-        .list_applications()
-        .expect("Could not get application list");
-
-    println!("Found {} applications:", applications.len());
+    let applications = pulse.applications();
 
     for app in applications.iter() {
-        let full_name = app
-            .proplist
-            .get_str("application.name")
-            .or_else(|| app.proplist.get_str("media.name"))
-            .or_else(|| app.name.as_ref().map(|s| s.to_owned()))
-            .unwrap_or_else(|| "Unknown application".to_string());
-
-        println!("{} - {}", app.index, full_name);
+        println!("{} - {}", app.sink_input_index, &app.name);
     }
 
     let index = stdin.prompt("Select the id of the application you want to stream");
@@ -54,34 +26,17 @@ async fn main() {
 
     let app = applications
         .into_iter()
-        .find(|a| a.index == index)
-        .expect("Application exists");
+        .find(|a| a.sink_input_index == index)
+        .expect("Selected application does not exist");
 
-    println!("You selected {}", app.name.clone().unwrap());
+    println!("You selected {}", &app.name);
 
-    dickcord::dickcord(device, app).await;
+    let audio = audio::AudioSystem::new(Arc::new(pulse));
+    audio.set_application(app);
+
+    dickcord::dickcord(audio).await;
 }
 
-/**
-*
-* spawn("parec", [
-     "--verbose",
-     "--device",
-     source.deviceName,
-     "--monitor-stream",
-     String(source.sinkInputIndex),
-     // discord.js voice 'raw' wants this
-     "--format=s16le",
-     // pin rate and channels to what discord requires
-     "--rate=48000",
-     "--channels=2",
-     // set latency and processing time as low as parec allows and let
-     // pulseaudio do its best instead -- the defaults are very high to
-     // "power saving reasons" which is suboptimal for sharing live audio
-     "--latency=1",
-     "--process-time=1",
-   ])
-*/
 trait Prompt {
     fn prompt(&self, message: &str) -> String;
 }
