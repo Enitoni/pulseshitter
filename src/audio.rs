@@ -163,6 +163,8 @@ pub fn run_check_thread(audio: Arc<AudioSystem>) {
                     let mut line = String::new();
                     reader.read_line(&mut line).expect("Read line");
 
+                    println!("{}", &line);
+
                     if line.contains(STREAM_MOVED_MESSAGE) {
                         println!("AAAAAAAAAAAAAAAAA");
                         break;
