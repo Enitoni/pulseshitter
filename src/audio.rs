@@ -89,13 +89,16 @@ impl Read for AudioStream {
         let mut lock = self.parec.lock().unwrap();
         let parec = (*lock).as_mut();
 
-        match parec {
-            Some(parec) => parec.stdout.read(buf),
-            None => {
-                buf.fill(0);
-                Ok(buf.len())
-            }
+        let mut bytes_read = 0;
+
+        while bytes_read < buf.len() {
+            match parec {
+                Some(parec) => bytes_read += parec.stdout.read(buf).unwrap_or_default(),
+                None => continue,
+            };
         }
+
+        Ok(bytes_read)
     }
 }
 
