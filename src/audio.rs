@@ -156,8 +156,8 @@ pub fn run_check_thread(audio: Arc<AudioSystem>) {
 
         match parec_stderr {
             Some(stderr) => {
-                // Check for stream moved message
                 let mut reader = BufReader::new(stderr);
+                let device = audio.pulse.device_name();
 
                 loop {
                     let mut line = String::new();
@@ -165,6 +165,13 @@ pub fn run_check_thread(audio: Arc<AudioSystem>) {
 
                     println!("{}", &line);
 
+                    // Parec connected to the wrong device
+                    if line.contains(STREAM_CONNECTED_MESSAGE) && !line.contains(&device) {
+                        println!("Nice try bitch");
+                        break;
+                    }
+
+                    // Parec moved to the wrong device
                     if line.contains(STREAM_MOVED_MESSAGE) {
                         println!("AAAAAAAAAAAAAAAAA");
                         break;
@@ -178,4 +185,5 @@ pub fn run_check_thread(audio: Arc<AudioSystem>) {
     });
 }
 
+const STREAM_CONNECTED_MESSAGE: &str = "Connected to device";
 const STREAM_MOVED_MESSAGE: &str = "Stream moved to";
