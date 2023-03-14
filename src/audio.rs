@@ -111,14 +111,14 @@ impl MediaSource for AudioStream {
 struct Parec {
     child: Child,
     stdout: ChildStdout,
-    stderr: ChildStderr,
+    //stderr: ChildStderr,
 }
 
 impl Parec {
     fn new(device: String, app: Application) -> Self {
         let mut child = Command::new("parec")
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            //.stderr(Stdio::piped())
             .arg("--verbose")
             .arg("--device")
             .arg(device)
@@ -133,12 +133,12 @@ impl Parec {
             .expect("Could not spawn parec instance");
 
         let stdout = child.stdout.take().expect("Take stdout from child");
-        let stderr = child.stderr.take().expect("Take stderr from child");
+        //let stderr = child.stderr.take().expect("Take stderr from child");
 
         Self {
             child,
             stdout,
-            stderr,
+            //stderr,
         }
     }
 }
