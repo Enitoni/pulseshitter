@@ -156,6 +156,8 @@ pub fn run_check_thread(audio: Arc<AudioSystem>) {
                 let stderr = &mut parec.stderr;
                 let mut reader = BufReader::new(stderr);
 
+                println!("hhhhhh");
+
                 loop {
                     let mut line = String::new();
                     reader.read_line(&mut line).expect("Read line");
