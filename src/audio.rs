@@ -107,7 +107,7 @@ impl MediaSource for AudioStream {
 struct Parec {
     child: Mutex<Child>,
     stdout: ChildStdout,
-    stderr: ChildStderr,
+    stderr: Option<ChildStderr>,
 }
 
 impl Parec {
@@ -133,7 +133,7 @@ impl Parec {
 
         Self {
             child: child.into(),
-            stderr,
+            stderr: Some(stderr),
             stdout,
         }
     }
@@ -148,15 +148,16 @@ impl Drop for Parec {
 
 pub fn run_check_thread(audio: Arc<AudioSystem>) {
     thread::spawn(move || loop {
-        let mut parec = audio.stream.parec.lock().unwrap();
+        let parec_stderr = {
+            let mut parec = audio.stream.parec.lock().unwrap();
 
-        match (*parec).as_mut() {
-            Some(parec) => {
+            (*parec).as_mut().and_then(|parec| parec.stderr.take())
+        };
+
+        match parec_stderr {
+            Some(stderr) => {
                 // Check for stream moved message
-                let stderr = &mut parec.stderr;
                 let mut reader = BufReader::new(stderr);
-
-                println!("hhhhhh");
 
                 loop {
                     let mut line = String::new();
