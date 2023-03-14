@@ -74,13 +74,14 @@ impl Default for AudioStream {
 impl Read for AudioStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut lock = self.parec.lock().unwrap();
-
         let parec = (*lock).as_mut();
 
         match parec {
             Some(parec) => {
                 println!("PAREC IS SPAWNED");
-                parec.stdout.read(buf)
+                let result = parec.stdout.read(buf).unwrap();
+
+                Ok(result)
             }
             None => {
                 buf.fill(0);
