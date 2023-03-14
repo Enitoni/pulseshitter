@@ -117,7 +117,7 @@ impl Parec {
             .arg("--device")
             .arg(device)
             .arg("--monitor-stream")
-            .arg(app.sink_input_index)
+            .arg(app.sink_input_index.to_string())
             .arg("--format=float32le")
             .arg("--rate=48000")
             .arg("--channels=2")
