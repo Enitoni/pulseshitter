@@ -34,7 +34,9 @@ async fn main() {
 
     println!("You selected {}", &app.name);
 
-    let audio = audio::AudioSystem::new(Arc::new(pulse));
+    let audio = Arc::new(audio::AudioSystem::new(Arc::new(pulse)));
+
+    audio::run_check_thread(audio.clone());
     audio.set_application(app);
 
     dickcord::dickcord(audio).await;

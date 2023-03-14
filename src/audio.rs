@@ -1,6 +1,8 @@
-use std::io::{Read, Seek};
+use std::io::{BufRead, BufReader, Read, Seek};
 use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 use songbird::input::reader::MediaSource;
 use songbird::input::{Codec, Container, Input, Reader};
@@ -103,16 +105,16 @@ impl MediaSource for AudioStream {
 }
 
 struct Parec {
-    child: Child,
+    child: Mutex<Child>,
     stdout: ChildStdout,
-    //stderr: ChildStderr,
+    stderr: ChildStderr,
 }
 
 impl Parec {
     fn new(device: String, app: Application) -> Self {
         let mut child = Command::new("parec")
             .stdout(Stdio::piped())
-            //.stderr(Stdio::piped())
+            .stderr(Stdio::piped())
             .arg("--verbose")
             .arg("--device")
             .arg(device)
@@ -127,12 +129,12 @@ impl Parec {
             .expect("Could not spawn parec instance");
 
         let stdout = child.stdout.take().expect("Take stdout from child");
-        //let stderr = child.stderr.take().expect("Take stderr from child");
+        let stderr = child.stderr.take().expect("Take stderr from child");
 
         Self {
-            child,
+            child: child.into(),
+            stderr,
             stdout,
-            //stderr,
         }
     }
 }
@@ -140,6 +142,35 @@ impl Parec {
 // We must implement this otherwise when a Parec stream is dropped, the child will continue to live
 impl Drop for Parec {
     fn drop(&mut self) {
-        self.child.kill().expect("Child killed");
+        self.child.lock().unwrap().kill().expect("Child killed");
     }
 }
+
+pub fn run_check_thread(audio: Arc<AudioSystem>) {
+    thread::spawn(move || loop {
+        let mut parec = audio.stream.parec.lock().unwrap();
+
+        match (*parec).as_mut() {
+            Some(parec) => {
+                // Check for stream moved message
+                let stderr = &mut parec.stderr;
+                let mut reader = BufReader::new(stderr);
+
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).expect("Read line");
+
+                    if line.contains(STREAM_MOVED_MESSAGE) {
+                        println!("AAAAAAAAAAAAAAAAA");
+                        break;
+                    }
+                }
+            }
+            None => {
+                thread::sleep(Duration::from_millis(100));
+            }
+        };
+    });
+}
+
+const STREAM_MOVED_MESSAGE: &str = "Stream moved to";
