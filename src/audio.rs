@@ -78,7 +78,10 @@ impl Read for AudioStream {
         let parec = (*lock).as_mut();
 
         match parec {
-            Some(parec) => parec.stdout.read(buf),
+            Some(parec) => {
+                println!("PAREC IS SPAWNED");
+                parec.stdout.read(buf)
+            }
             None => {
                 buf.fill(0);
                 Ok(buf.len())
