@@ -77,13 +77,7 @@ impl Read for AudioStream {
         let parec = (*lock).as_mut();
 
         match parec {
-            Some(parec) => {
-                println!("PAREC IS SPAWNED");
-                let result = parec.stdout.read(buf).unwrap();
-                println!("It read {}", result);
-
-                Ok(result)
-            }
+            Some(parec) => parec.stdout.read(buf),
             None => {
                 buf.fill(0);
                 Ok(buf.len())
@@ -123,7 +117,7 @@ impl Parec {
             .arg("--device")
             .arg(device)
             .arg("--monitor-stream")
-            .arg(app.name)
+            .arg(app.sink_input_index)
             .arg("--format=float32le")
             .arg("--rate=48000")
             .arg("--channels=2")
