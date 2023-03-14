@@ -113,6 +113,7 @@ impl Parec {
     fn new(device: String, app: Application) -> Self {
         let mut child = Command::new("parec")
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .arg("--verbose")
             .arg("--device")
             .arg(device)
