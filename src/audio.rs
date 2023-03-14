@@ -12,17 +12,22 @@ use crate::pulse::{Application, PulseAudio};
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
     selected_app: Mutex<Option<Application>>,
-    pulse: Arc<PulseAudio>,
+    pulse: PulseAudio,
     stream: AudioStream,
 }
 
 impl AudioSystem {
-    pub fn new(pulse: Arc<PulseAudio>) -> Self {
+    pub fn new(pulse: PulseAudio) -> Self {
         Self {
             pulse,
             selected_app: Default::default(),
             stream: Default::default(),
         }
+    }
+
+    pub fn run(audio: Arc<AudioSystem>) {
+        run_check_thread(audio.clone());
+        run_respawn_thread(audio);
     }
 
     pub fn set_application(&self, app: Application) {
@@ -31,6 +36,7 @@ impl AudioSystem {
             *selected_app = Some(app.clone());
         }
 
+        println!("Spawning recorder for {}", app.name);
         self.stream.respawn(self.pulse.device_name(), app)
     }
 
@@ -147,16 +153,15 @@ impl Parec {
 // We must implement this otherwise when a Parec stream is dropped, the child will continue to live
 impl Drop for Parec {
     fn drop(&mut self) {
-        println!("Parec killed");
         self.child.lock().unwrap().kill().expect("Child killed");
     }
 }
 
-pub fn run_check_thread(audio: Arc<AudioSystem>) {
+/// Runs a thread to check when the parec stream moves or is incorrect
+fn run_check_thread(audio: Arc<AudioSystem>) {
     thread::spawn(move || loop {
         let parec_stderr = {
             let mut parec = audio.stream.parec.lock().unwrap();
-
             (*parec).as_mut().and_then(|parec| parec.stderr.take())
         };
 
@@ -168,8 +173,6 @@ pub fn run_check_thread(audio: Arc<AudioSystem>) {
                 loop {
                     let mut line = String::new();
                     reader.read_line(&mut line).expect("Read line");
-
-                    println!("{}", &line);
 
                     // Parec connected or moved to the wrong device
                     if line.contains(STREAM_CONNECTED_MESSAGE) && !line.contains(&device)
@@ -184,6 +187,40 @@ pub fn run_check_thread(audio: Arc<AudioSystem>) {
                 thread::sleep(Duration::from_millis(100));
             }
         };
+    });
+}
+
+/// Runs a thread that respawns parec when the selected application is ready again
+fn run_respawn_thread(audio: Arc<AudioSystem>) {
+    thread::spawn(move || loop {
+        let stream_cleared = {
+            let parec = audio.stream.parec.lock().unwrap();
+            parec.is_none()
+        };
+
+        let selected_app = {
+            let selected_app = audio.selected_app.lock().unwrap();
+
+            match (*selected_app).as_ref() {
+                Some(app) => app.clone(),
+                None => continue,
+            }
+        };
+
+        if stream_cleared {
+            loop {
+                audio.pulse.update_applications();
+                let app = audio
+                    .pulse
+                    .applications()
+                    .into_iter()
+                    .find(|app| app.sink_input_name == selected_app.sink_input_name);
+
+                if let Some(app) = app {
+                    audio.set_application(app)
+                }
+            }
+        }
     });
 }
 
