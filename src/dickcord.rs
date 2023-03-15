@@ -1,4 +1,5 @@
 use std::env;
+use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 
 use serenity::async_trait;
@@ -12,6 +13,7 @@ use crate::audio::AudioSystem;
 struct Handler {
     user_id: u64,
     audio: Arc<AudioSystem>,
+    ready: SyncSender<()>,
 }
 
 #[async_trait]
@@ -33,7 +35,8 @@ impl EventHandler for Handler {
         let input = self.audio.stream().into_input();
         call.play_source(input);
 
-        println!("{}", channel.id)
+        println!("{}", channel.id);
+        self.ready.send(()).unwrap();
     }
 }
 
@@ -61,7 +64,7 @@ async fn find_voice_channel(
     None
 }
 
-pub async fn dickcord(audio: Arc<AudioSystem>) {
+pub async fn dickcord(ready: SyncSender<()>, audio: Arc<AudioSystem>) {
     let token =
         env::var("DISCORD_TOKEN").expect("Expected a DISCORD_TOKEN in the environment youi fhfjck");
 
@@ -70,7 +73,11 @@ pub async fn dickcord(audio: Arc<AudioSystem>) {
         .parse()
         .unwrap();
 
-    let handler = Handler { user_id, audio };
+    let handler = Handler {
+        user_id,
+        ready,
+        audio,
+    };
 
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS

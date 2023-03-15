@@ -1,4 +1,8 @@
-use std::{io::Stdin, sync::Arc, thread, time::Duration};
+use std::{
+    io::Stdin,
+    sync::{mpsc, Arc},
+    thread,
+};
 
 use crate::audio::AudioSystem;
 
@@ -7,6 +11,7 @@ mod dickcord;
 mod pulse;
 
 #[tokio::main]
+
 async fn main() {
     let pulse = pulse::PulseAudio::new();
 
@@ -37,15 +42,21 @@ async fn main() {
     println!("You selected {}", &app.name);
 
     let audio = Arc::new(AudioSystem::new(pulse));
-    let discord_thread = tokio::spawn(dickcord::dickcord(audio.clone()));
+    let (sender, receiver) = mpsc::sync_channel::<()>(0);
 
-    thread::sleep(Duration::from_secs(5));
-    println!("DOES IT EVEN GET PAST THIS");
+    thread::spawn({
+        let audio = audio.clone();
 
-    audio.set_application(app);
-    AudioSystem::run(audio);
+        move || {
+            // Wait for serenity
+            receiver.recv().unwrap();
 
-    while !discord_thread.is_finished() {}
+            audio.set_application(app);
+            AudioSystem::run(audio);
+        }
+    });
+
+    dickcord::dickcord(sender, audio.clone()).await
 }
 
 trait Prompt {
