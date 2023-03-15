@@ -1,4 +1,4 @@
-use std::{io::Stdin, sync::Arc};
+use std::{io::Stdin, sync::Arc, thread, time::Duration};
 
 use crate::audio::AudioSystem;
 
@@ -39,6 +39,7 @@ async fn main() {
     let audio = Arc::new(AudioSystem::new(pulse));
     let discord_thread = tokio::spawn(dickcord::dickcord(audio.clone()));
 
+    thread::sleep(Duration::from_secs(5));
     println!("DOES IT EVEN GET PAST THIS");
 
     audio.set_application(app);
