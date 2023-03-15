@@ -93,7 +93,6 @@ impl Read for AudioStream {
             match parec {
                 Some(parec) => {
                     let bytes_read = parec.stdout.read(buf).unwrap_or_default();
-                    dbg!(&bytes_read, buf.len());
                     return Ok(bytes_read);
                 }
                 None => continue,
