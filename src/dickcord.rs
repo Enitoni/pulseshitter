@@ -19,11 +19,7 @@ struct Handler {
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, context: Context, _ready: Ready) {
-        println!("Finding user {}", self.user_id);
-
         let guilds = context.cache.guilds();
-        println!("Searching in {} guilds", guilds.len());
-
         let channel = find_voice_channel(&context, self.user_id, guilds.clone())
             .await
             .expect("Could not find voice channel");
@@ -35,7 +31,6 @@ impl EventHandler for Handler {
         let input = self.audio.stream().into_input();
         call.play_source(input);
 
-        println!("{}", channel.id);
         self.ready.send(()).unwrap();
     }
 }
