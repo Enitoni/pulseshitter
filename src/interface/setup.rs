@@ -30,7 +30,7 @@ impl ViewController for SetupView {
     }
 }
 
-impl Widget for SetupView {
+impl Widget for &SetupView {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         for cell in &mut buf.content {
             cell.set_bg(Color::White);
