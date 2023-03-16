@@ -220,7 +220,7 @@ fn run_respawn_thread(audio: Arc<AudioSystem>) {
                     .pulse
                     .applications()
                     .into_iter()
-                    .find(|app| app.sink_input_name == selected_app.sink_input_name);
+                    .find(|app| app.id == selected_app.id);
 
                 if let Some(app) = app {
                     audio.set_application(app);
