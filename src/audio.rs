@@ -217,10 +217,15 @@ fn run_respawn_thread(audio: Arc<AudioSystem>) {
             loop {
                 audio.pulse.update_applications();
 
-                let apps = audio.pulse.applications();
+                let apps = {
+                    let mut a = audio.pulse.applications();
+                    a.reverse();
+                    a
+                };
 
                 let app = apps
                     .iter()
+                    .rev()
                     .find(|app| app.id == selected_app.id)
                     .or_else(|| {
                         apps.iter()
