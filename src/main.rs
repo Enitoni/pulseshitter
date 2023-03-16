@@ -4,14 +4,35 @@ use std::{
     thread,
 };
 
+use interface::run_ui;
+use state::State;
+
 use crate::audio::AudioSystem;
 
 mod audio;
 mod dickcord;
+mod interface;
 mod pulse;
+mod state;
 
-#[tokio::main]
+fn main() {
+    let state = Arc::new(State::new());
 
+    thread::spawn({
+        let state = Arc::clone(&state);
+        let receiver = state.action_receiver.clone();
+
+        move || loop {
+            if let Ok(action) = receiver.recv() {
+                state.handle_action(action)
+            }
+        }
+    });
+
+    run_ui(state).unwrap();
+}
+
+/*#[tokio::main]
 async fn main() {
     let pulse = pulse::PulseAudio::new();
 
@@ -57,7 +78,7 @@ async fn main() {
     });
 
     dickcord::dickcord(sender, audio.clone()).await
-}
+}*/
 
 trait Prompt {
     fn prompt(&self, message: &str) -> String;
