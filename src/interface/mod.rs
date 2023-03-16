@@ -38,7 +38,8 @@ pub fn run_ui(state: Arc<State>) -> Result<(), io::Error> {
 
     loop {
         let mut view = state.current_view.lock().unwrap();
-        let draw_result = terminal.draw(|rect| {});
+
+        let draw_result = terminal.draw(|f| f.render_widget(&*view, f.size()));
 
         if let Err(err) = draw_result {
             eprintln!("Failed to draw: {:?}", err);
@@ -88,6 +89,15 @@ impl ViewController for View {
         match self {
             Self::Setup(setup_view) => setup_view.handle_event(event),
             Self::Dashboard => todo!(),
+        }
+    }
+}
+
+impl Widget for &View {
+    fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+        match self {
+            View::Setup(setup_view) => setup_view.render(area, buf),
+            View::Dashboard => todo!(),
         }
     }
 }
