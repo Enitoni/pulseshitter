@@ -86,17 +86,15 @@ impl Default for AudioStream {
 
 impl Read for AudioStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        loop {
-            let mut lock = self.parec.lock().unwrap();
-            let parec = (*lock).as_mut();
+        let mut lock = self.parec.lock().unwrap();
+        let parec = (*lock).as_mut();
 
-            match parec {
-                Some(parec) => {
-                    let bytes_read = parec.stdout.read(buf).unwrap_or_default();
-                    return Ok(bytes_read);
-                }
-                None => continue,
-            };
+        match parec {
+            Some(parec) => {
+                let bytes_read = parec.stdout.read(buf).unwrap_or_default();
+                Ok(bytes_read)
+            }
+            None => Ok(1),
         }
     }
 }
