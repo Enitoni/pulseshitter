@@ -52,6 +52,8 @@ impl PulseAudio {
 #[derive(Clone)]
 pub struct Application {
     pub id: u32,
+    pub process_id: u32,
+
     pub name: String,
 
     pub sink_input_name: String,
@@ -74,8 +76,16 @@ impl From<ApplicationInfo> for Application {
             .parse()
             .expect("Object id should be parsable");
 
+        let process_id: u32 = info
+            .proplist
+            .get_str("application.process.id")
+            .expect("Application should have process id!")
+            .parse()
+            .expect("Application process id should be parsable");
+
         Self {
             id,
+            process_id,
             name: full_name,
             sink_input_name: info.name.unwrap_or_default(),
             sink_input_index: info.index,
