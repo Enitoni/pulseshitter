@@ -47,6 +47,12 @@ pub fn run_ui(state: Arc<State>) -> Result<(), io::Error> {
         };
 
         if let Ok(event) = events.try_recv() {
+            if let Event::Key(key) = &event {
+                if let KeyCode::Char('q') = key.code {
+                    break;
+                }
+            }
+
             view.handle_event(event);
         };
     }
