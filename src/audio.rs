@@ -216,14 +216,19 @@ fn run_respawn_thread(audio: Arc<AudioSystem>) {
         if stream_cleared {
             loop {
                 audio.pulse.update_applications();
-                let app = audio
-                    .pulse
-                    .applications()
-                    .into_iter()
-                    .find(|app| app.id == selected_app.id);
+
+                let apps = audio.pulse.applications();
+
+                let app = apps
+                    .iter()
+                    .find(|app| app.id == selected_app.id)
+                    .or_else(|| {
+                        apps.iter()
+                            .find(|app| app.process_id == selected_app.process_id)
+                    });
 
                 if let Some(app) = app {
-                    audio.set_application(app);
+                    audio.set_application(app.to_owned());
                     break;
                 }
             }
