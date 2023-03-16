@@ -176,9 +176,10 @@ fn run_check_thread(audio: Arc<AudioSystem>) {
 
                     eprint!("{}", line);
 
-                    // Parec connected or moved to the wrong device
+                    // Parec connected or moved to the wrong device, or timed out
                     if line.contains(STREAM_CONNECTED_MESSAGE) && !line.contains(&device)
                         || line.contains(STREAM_MOVED_MESSAGE)
+                        || line.contains(STREAM_TIMEOUT)
                     {
                         audio.stream.clear();
                         break;
@@ -239,5 +240,6 @@ fn run_respawn_thread(audio: Arc<AudioSystem>) {
     });
 }
 
+const STREAM_TIMEOUT: &str = "Stream error: Timeout";
 const STREAM_CONNECTED_MESSAGE: &str = "Connected to device";
 const STREAM_MOVED_MESSAGE: &str = "Stream moved to";
