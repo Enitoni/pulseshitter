@@ -225,8 +225,8 @@ fn run_respawn_thread(audio: Arc<AudioSystem>) {
 
                 let app = apps
                     .iter()
-                    .rev()
-                    .find(|app| app.id == selected_app.id)
+                    .find(|app| app.sink_input_name == selected_app.sink_input_name)
+                    .or_else(|| apps.iter().find(|app| app.id == selected_app.id))
                     .or_else(|| {
                         apps.iter()
                             .find(|app| app.process_id == selected_app.process_id)
