@@ -92,7 +92,9 @@ impl Read for AudioStream {
         match parec {
             Some(parec) => {
                 let bytes_read = parec.stdout.read(buf).unwrap_or_default();
-                Ok(bytes_read)
+
+                // We don't want to tell songbird that the stream is over
+                Ok(bytes_read.min(1))
             }
             None => Ok(1),
         }
