@@ -42,7 +42,7 @@ impl ViewController for SetupView {
 impl Widget for &SetupView {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         let chunks = Layout::default()
-            .direction(Direction::Horizontal)
+            .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Length(1)])
             .split(area);
 
