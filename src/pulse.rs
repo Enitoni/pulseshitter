@@ -79,7 +79,7 @@ impl From<ApplicationInfo> for Application {
         let process_id: u32 = info
             .proplist
             .get_str("application.process.id")
-            .expect("Application should have process id!")
+            .unwrap_or_else(|| "0".to_string())
             .parse()
             .expect("Application process id should be parsable");
 
