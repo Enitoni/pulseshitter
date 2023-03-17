@@ -29,6 +29,7 @@ impl ViewController for SetupView {
         if let Event::Key(key) = event {
             if key.code == KeyCode::Tab {
                 self.selected_field = next_cycle(&self.selected_field).expect("Never None");
+                return;
             }
 
             match self.selected_field {
