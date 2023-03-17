@@ -42,7 +42,7 @@ pub fn run_ui(state: Arc<State>) -> Result<(), io::Error> {
         let draw_result = terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(2), Constraint::Percentage(100)])
+                .constraints([Constraint::Length(3), Constraint::Percentage(100)])
                 .split(f.size());
 
             let logo = Paragraph::new(LOGO);

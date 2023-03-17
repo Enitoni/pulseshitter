@@ -3,7 +3,7 @@ use enum_iterator::{next_cycle, Sequence};
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::Color,
-    widgets::Widget,
+    widgets::{Block, Borders, Widget},
 };
 use tui_textarea::TextArea;
 
@@ -42,19 +42,15 @@ impl ViewController for SetupView {
 
 impl Widget for &SetupView {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+        let block = Block::default().title("Setup").borders(Borders::all());
+        let block_inner = block.inner(area);
+
+        block.render(area, buf);
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Length(1)])
-            .split(area);
-
-        for cell in &mut buf.content {
-            cell.set_bg(Color::White);
-
-            match self.selected_field {
-                SelectedField::BotToken => cell.set_bg(Color::White),
-                SelectedField::UserId => cell.set_bg(Color::Black),
-            };
-        }
+            .split(block_inner);
 
         self.user_id.widget().render(chunks[0], buf);
         self.bot_token.widget().render(chunks[1], buf);
