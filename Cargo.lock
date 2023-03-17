@@ -348,6 +348,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "enum-iterator"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "706d9e7cf1c7664859d79cd524e4e53ea2b67ea03c98cc2870c5e539695d597e"
+dependencies = [
+ "enum-iterator-derive",
+]
+
+[[package]]
+name = "enum-iterator-derive"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "355f93763ef7b0ae1c43c4d8eccc9d5848d84ad1a1d8ce61c421d1ac85a19d05"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "enum_primitive"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1019,6 +1039,7 @@ version = "1.0.1"
 dependencies = [
  "crossbeam",
  "crossterm",
+ "enum-iterator",
  "pulsectl-rs",
  "ron",
  "serde",
@@ -1026,6 +1047,7 @@ dependencies = [
  "songbird",
  "tokio",
  "tui",
+ "tui-textarea",
 ]
 
 [[package]]
@@ -1730,6 +1752,16 @@ dependencies = [
  "crossterm",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "tui-textarea"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "437ad97a57d66f7231dab16f51ede1ff5a3aac68c83eb10fa3a178e454b63cae"
+dependencies = [
+ "crossterm",
+ "tui",
 ]
 
 [[package]]
