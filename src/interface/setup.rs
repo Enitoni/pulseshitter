@@ -27,7 +27,7 @@ pub struct SetupView {
 impl ViewController for SetupView {
     fn handle_event(&mut self, event: Event) {
         if let Event::Key(key) = event {
-            if key.code == KeyCode::Tab {
+            if key.code == KeyCode::Tab || key.code == KeyCode::Enter {
                 self.selected_field = next_cycle(&self.selected_field).expect("Never None");
                 return;
             }
