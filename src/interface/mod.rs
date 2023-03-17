@@ -14,7 +14,7 @@ use std::{
 };
 use tui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout},
     widgets::{Block, Borders, Paragraph, Widget},
     Terminal,
 };
@@ -42,10 +42,11 @@ pub fn run_ui(state: Arc<State>) -> Result<(), io::Error> {
         let draw_result = terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(3), Constraint::Percentage(100)])
+                .constraints([Constraint::Length(4), Constraint::Percentage(100)])
+                .horizontal_margin(1)
                 .split(f.size());
 
-            let logo = Paragraph::new(LOGO);
+            let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
 
             f.render_widget(logo, chunks[0]);
             f.render_widget(&*view, chunks[1]);
@@ -118,6 +119,7 @@ impl Widget for &View {
     }
 }
 
-const LOGO: &str = "█▀█ █░█ █░░ █▀ █▀▀ █▀ █░█ █ ▀█▀ ▀█▀ █▀▀ █▀█
+const LOGO: &str = "
+█▀█ █░█ █░░ █▀ █▀▀ █▀ █░█ █ ▀█▀ ▀█▀ █▀▀ █▀█
 █▀▀ █▄█ █▄▄ ▄█ ██▄ ▄█ █▀█ █ ░█░ ░█░ ██▄ █▀▄
 ";
