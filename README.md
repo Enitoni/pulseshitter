@@ -48,6 +48,7 @@ rust:
 - [Mirror 0](https://www.rust-lang.org/)
 - [Mirror 1](https://store.steampowered.com/agecheck/app/252490/)
 - [Mirror 2](https://en.wikipedia.org/wiki/Rust)
+- [Mirror 3](https://www.youtube.com/watch?v=q25Y6Ix6VWw)
 
 ```shell
 cargo build
