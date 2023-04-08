@@ -1,4 +1,5 @@
 use std::{
+    env,
     io::Stdin,
     sync::{mpsc, Arc},
     thread,
@@ -13,6 +14,8 @@ mod pulse;
 #[tokio::main]
 
 async fn main() {
+    setup_logger();
+
     let pulse = pulse::PulseAudio::new();
 
     // Run this once to get list of applications
@@ -71,4 +74,26 @@ impl Prompt for Stdin {
         self.read_line(&mut result).expect("Read line correctly");
         result
     }
+}
+
+fn setup_logger() -> Result<(), fern::InitError> {
+    if env::var("ENABLE_LOGGING").is_err() {
+        return Ok(());
+    };
+
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{} {}] {}",
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Debug)
+        .chain(std::io::stdout())
+        .chain(fern::log_file("output.log")?)
+        .apply()?;
+
+    Ok(())
 }
