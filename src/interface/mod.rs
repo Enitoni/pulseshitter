@@ -19,6 +19,7 @@ use tui::{
     Terminal,
 };
 
+mod field;
 mod setup;
 
 use crate::state::State;
