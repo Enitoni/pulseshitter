@@ -6,7 +6,7 @@ use std::{
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::Discord;
-use interface::{run_ui, View};
+use interface::{run_ui, setup::SetupView, View};
 use state::Config;
 
 use crate::audio::AudioSystem;
@@ -43,13 +43,15 @@ impl App {
             };
         }
 
+        let setup_view = SetupView::new(action_sender.clone(), discord.status.clone());
+
         // New setup
         Self {
-            discord,
-            action_sender,
-            action_receiver,
+            current_view: View::Setup(setup_view).into(),
             config: Config::restore().into(),
-            current_view: Default::default(),
+            action_receiver,
+            action_sender,
+            discord,
         }
     }
 

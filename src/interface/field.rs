@@ -37,6 +37,10 @@ impl Field {
         self.area.set_cursor_style(Style::reset());
         self.area.set_cursor_line_style(Style::reset());
     }
+
+    pub fn value(&self) -> String {
+        self.area.lines()[0].to_string()
+    }
 }
 
 impl ViewController for Field {

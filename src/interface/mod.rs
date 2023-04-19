@@ -19,7 +19,7 @@ use tui::{
 };
 
 mod field;
-mod setup;
+pub mod setup;
 
 use crate::App;
 
@@ -95,12 +95,6 @@ fn run_event_loop() -> Receiver<Event> {
 pub enum View {
     Setup(SetupView),
     Dashboard,
-}
-
-impl Default for View {
-    fn default() -> Self {
-        Self::Setup(Default::default())
-    }
 }
 
 pub trait ViewController {
