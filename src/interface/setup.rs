@@ -40,7 +40,9 @@ impl SetupView {
 
 impl Default for SetupView {
     fn default() -> Self {
-        let bot_token = Field::new("Bot token");
+        let mut bot_token = Field::new("Bot token");
+        bot_token.focus();
+
         let user_id = Field::new("User id");
 
         Self {
