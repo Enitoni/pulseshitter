@@ -8,7 +8,7 @@ use tui::{
 };
 use tui_textarea::TextArea;
 
-use super::ViewController;
+use super::{field::Field, ViewController};
 
 #[derive(Default, PartialEq, Sequence)]
 enum SelectedField {
@@ -20,30 +20,28 @@ enum SelectedField {
 pub struct SetupView {
     selected_field: SelectedField,
 
-    bot_token: TextArea<'static>,
-    user_id: TextArea<'static>,
+    bot_token: Field,
+    user_id: Field,
 }
 
 impl SetupView {
     fn cycle_selection(&mut self) {
-        deactivate(&mut self.bot_token);
-        deactivate(&mut self.user_id);
+        self.selected_field = next_cycle(&self.selected_field).expect("Implements sequence");
 
-        self.selected_field = next_cycle(&self.selected_field).expect("Never None");
-
-        match self.selected_field {
-            SelectedField::BotToken => activate(&mut self.bot_token),
-            SelectedField::UserId => activate(&mut self.user_id),
+        let (focus, blur) = match self.selected_field {
+            SelectedField::BotToken => (&mut self.bot_token, &mut self.user_id),
+            SelectedField::UserId => (&mut self.user_id, &mut self.bot_token),
         };
+
+        focus.focus();
+        blur.blur();
     }
 }
 
 impl Default for SetupView {
     fn default() -> Self {
-        let bot_token = create_text_area();
-
-        let mut user_id = create_text_area();
-        deactivate(&mut user_id);
+        let bot_token = Field::new("Bot token");
+        let user_id = Field::new("User id");
 
         Self {
             selected_field: Default::default(),
@@ -52,20 +50,6 @@ impl Default for SetupView {
             user_id,
         }
     }
-}
-
-fn create_text_area() -> TextArea<'static> {
-    TextArea::new(vec!["".to_string()])
-}
-
-fn deactivate(area: &mut TextArea<'_>) {
-    area.set_cursor_style(Style::reset());
-    area.set_cursor_line_style(Style::reset());
-}
-
-fn activate(area: &mut TextArea<'_>) {
-    area.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
-    area.set_cursor_line_style(Style::default().add_modifier(Modifier::UNDERLINED));
 }
 
 impl ViewController for SetupView {
@@ -77,8 +61,8 @@ impl ViewController for SetupView {
             }
 
             match self.selected_field {
-                SelectedField::BotToken => self.bot_token.input(key),
-                SelectedField::UserId => self.user_id.input(key),
+                SelectedField::BotToken => self.bot_token.handle_event(event),
+                SelectedField::UserId => self.user_id.handle_event(event),
             };
         }
     }
@@ -93,12 +77,12 @@ impl Widget for &SetupView {
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(1)])
+            .constraints([Constraint::Length(2), Constraint::Length(2)])
             .margin(1)
             .horizontal_margin(2)
             .split(block_inner);
 
-        self.bot_token.widget().render(chunks[0], buf);
-        self.user_id.widget().render(chunks[1], buf);
+        self.bot_token.render(chunks[0], buf);
+        self.user_id.render(chunks[1], buf);
     }
 }

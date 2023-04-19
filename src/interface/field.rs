@@ -15,7 +15,8 @@ pub struct Field {
 }
 
 impl Field {
-    pub fn new(label: String) -> Self {
+    pub fn new(label: &str) -> Self {
+        let label = label.to_string();
         let area = TextArea::new(vec!["".to_string()]);
 
         Self { label, area }
