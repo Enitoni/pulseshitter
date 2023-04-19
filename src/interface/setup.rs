@@ -1,12 +1,14 @@
-use crossterm::event::{Event, KeyCode, KeyEvent};
+use std::sync::{Arc, Mutex};
+
+use crossbeam::channel::Sender;
+use crossterm::event::{Event, KeyCode};
 use enum_iterator::{next_cycle, Sequence};
 use tui::{
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::Text,
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
-use tui_textarea::TextArea;
+
+use crate::{dickcord::DiscordStatus, state::Config, Action};
 
 use super::{field::Field, ViewController};
 
@@ -19,12 +21,30 @@ enum SelectedField {
 
 pub struct SetupView {
     selected_field: SelectedField,
+    actions: Sender<Action>,
+    status: Arc<Mutex<DiscordStatus>>,
 
     bot_token: Field,
     user_id: Field,
 }
 
 impl SetupView {
+    pub fn new(actions: Sender<Action>, status: Arc<Mutex<DiscordStatus>>) -> Self {
+        let mut bot_token = Field::new("Bot token");
+        bot_token.focus();
+
+        let user_id = Field::new("User id");
+
+        Self {
+            selected_field: Default::default(),
+            actions,
+            status,
+
+            bot_token,
+            user_id,
+        }
+    }
+
     fn cycle_selection(&mut self) {
         self.selected_field = next_cycle(&self.selected_field).expect("Implements sequence");
 
@@ -36,27 +56,34 @@ impl SetupView {
         focus.focus();
         blur.blur();
     }
-}
 
-impl Default for SetupView {
-    fn default() -> Self {
-        let mut bot_token = Field::new("Bot token");
-        bot_token.focus();
-
-        let user_id = Field::new("User id");
-
-        Self {
-            selected_field: Default::default(),
-
-            bot_token,
-            user_id,
-        }
+    fn is_valid(&self) -> bool {
+        !(self.bot_token.value().is_empty()) && !(self.user_id.value().is_empty())
     }
 }
 
 impl ViewController for SetupView {
     fn handle_event(&mut self, event: Event) {
+        // Don't allow any inputs while it's connecting
+        {
+            let status = self.status.lock().unwrap();
+            if let DiscordStatus::Idle | DiscordStatus::Failed(_) = *status {
+                return;
+            }
+        }
+
         if let Event::Key(key) = event {
+            if key.code == KeyCode::Enter && self.is_valid() {
+                let new_config = Config::new(
+                    self.bot_token.value(),
+                    self.user_id.value().parse().unwrap_or_default(),
+                );
+
+                self.actions.send(Action::SetConfig(new_config)).unwrap();
+
+                return;
+            }
+
             if key.code == KeyCode::Tab || key.code == KeyCode::Enter {
                 self.cycle_selection();
                 return;
