@@ -1,11 +1,13 @@
 use std::{
     io::Stdin,
-    sync::{mpsc, Arc},
+    sync::{Arc, Mutex},
     thread,
 };
 
-use interface::run_ui;
-use state::State;
+use crossbeam::channel::{unbounded, Receiver, Sender};
+use dickcord::Discord;
+use interface::{run_ui, View};
+use state::Config;
 
 use crate::audio::AudioSystem;
 
@@ -15,11 +17,62 @@ mod interface;
 mod pulse;
 mod state;
 
+pub struct App {
+    config: Mutex<Option<Config>>,
+    discord: Discord,
+
+    pub current_view: Mutex<View>,
+    pub action_sender: Sender<Action>,
+    pub action_receiver: Receiver<Action>,
+}
+
+impl App {
+    fn new() -> Self {
+        let discord = Discord::default();
+        let config = Config::restore();
+        let (action_sender, action_receiver) = unbounded();
+
+        // Existing setup
+        if let Some(config) = config {
+            return Self {
+                discord,
+                action_sender,
+                action_receiver,
+                config: Some(config).into(),
+                current_view: View::Dashboard.into(),
+            };
+        }
+
+        // New setup
+        Self {
+            discord,
+            action_sender,
+            action_receiver,
+            config: Config::restore().into(),
+            current_view: Default::default(),
+        }
+    }
+
+    pub fn handle_action(&self, action: Action) {
+        match action {
+            Action::SetConfig(new_config) => {
+                let mut config = self.config.lock().unwrap();
+                self.discord.connect(new_config.clone());
+                *config = Some(new_config);
+            }
+        };
+    }
+}
+
+pub enum Action {
+    SetConfig(Config),
+}
+
 fn main() {
-    let state = Arc::new(State::new());
+    let app = Arc::new(App::new());
 
     thread::spawn({
-        let state = Arc::clone(&state);
+        let state = Arc::clone(&app);
         let receiver = state.action_receiver.clone();
 
         move || loop {
@@ -29,56 +82,8 @@ fn main() {
         }
     });
 
-    run_ui(state).unwrap();
+    run_ui(app).unwrap();
 }
-
-/*#[tokio::main]
-async fn main() {
-    let pulse = pulse::PulseAudio::new();
-
-    // Run this once to get list of applications
-    pulse.update_applications();
-
-    println!("Pulseshitter");
-    println!("Using device: {}", pulse.device_name());
-
-    let stdin = std::io::stdin();
-    let applications = pulse.applications();
-
-    for app in applications.iter() {
-        println!(
-            "{} - {} ({})",
-            app.sink_input_index, &app.name, &app.sink_input_name
-        );
-    }
-
-    let index = stdin.prompt("Select the id of the application you want to stream");
-    let index: u32 = index.trim().parse().expect("Failed to parse input");
-
-    let app = applications
-        .into_iter()
-        .find(|a| a.sink_input_index == index)
-        .expect("Selected application does not exist");
-
-    println!("You selected {}", &app.name);
-
-    let audio = Arc::new(AudioSystem::new(pulse));
-    let (sender, receiver) = mpsc::sync_channel::<()>(0);
-
-    thread::spawn({
-        let audio = audio.clone();
-
-        move || {
-            // Wait for serenity
-            receiver.recv().unwrap();
-
-            audio.set_application(app);
-            AudioSystem::run(audio);
-        }
-    });
-
-    dickcord::dickcord(sender, audio.clone()).await
-}*/
 
 trait Prompt {
     fn prompt(&self, message: &str) -> String;
