@@ -19,7 +19,10 @@ impl Field {
         let label = label.to_string();
         let area = TextArea::new(vec!["".to_string()]);
 
-        Self { label, area }
+        let mut result = Self { label, area };
+        result.blur();
+
+        result
     }
 
     pub fn focus(&mut self) {
