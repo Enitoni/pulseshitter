@@ -4,7 +4,7 @@ use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::Text,
-    widgets::{Block, Borders, Widget},
+    widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 use tui_textarea::TextArea;
 
@@ -72,17 +72,31 @@ impl Widget for &SetupView {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         let block = Block::default().title("Setup").borders(Borders::all());
         let block_inner = block.inner(area);
-
         block.render(area, buf);
+
+        let help_text = match self.selected_field {
+            SelectedField::BotToken => BOT_TOKEN_HELP,
+            SelectedField::UserId => USER_ID_HELP,
+        };
+
+        let help_text = Paragraph::new(help_text).wrap(Wrap { trim: false });
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Length(2)])
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(3),
+                Constraint::Percentage(100),
+            ])
             .margin(1)
             .horizontal_margin(2)
             .split(block_inner);
 
         self.bot_token.render(chunks[0], buf);
         self.user_id.render(chunks[1], buf);
+        help_text.render(chunks[2], buf);
     }
 }
+
+const BOT_TOKEN_HELP: &str = "The bot token is the password of your bot. This can be found in https://discord.com/developers under \"Applications\" and \"Bot\", in which you can generate your token there.";
+const USER_ID_HELP: &str = "The user that the bot should follow, which is often yourself. The bot will join the same voice call that they are in. Right click on a user and press \"Copy User ID\" listed at the bottom. If no such button exists, enable developer mode by going in Settings > Appearance > Developer Mode (found at the bottom).";
