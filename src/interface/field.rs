@@ -15,6 +15,12 @@ pub struct Field {
 }
 
 impl Field {
+    pub fn new(label: String) -> Self {
+        let area = TextArea::new(vec!["".to_string()]);
+
+        Self { label, area }
+    }
+
     pub fn focus(&mut self) {
         self.area
             .set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
