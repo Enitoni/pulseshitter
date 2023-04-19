@@ -101,4 +101,4 @@ impl Widget for &SetupView {
 }
 
 const BOT_TOKEN_HELP: &str = "The bot token is the password of your bot. This can be found in https://discord.com/developers under \"Applications\" and \"Bot\", in which you can generate your token there.";
-const USER_ID_HELP: &str = "The user that the bot should follow, which is often yourself. The bot will join the same voice call that they are in. Right click on a user and press \"Copy User ID\" listed at the bottom. If no such button exists, enable developer mode by going in Settings > Appearance > Developer Mode (found at the bottom).";
+const USER_ID_HELP: &str = "The user that the bot should follow, which in most cases is yourself. The bot will join the same voice call that the user is in. Right click on a user and press \"Copy User ID\" listed at the bottom. If no such button exists, enable developer mode by going in Settings > Appearance > Developer Mode (found at the bottom).";
