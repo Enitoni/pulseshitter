@@ -103,6 +103,16 @@ impl Widget for &SetupView {
         let block_inner = block.inner(area);
         block.render(area, buf);
 
+        let status_text = match *(self.status.lock().unwrap()) {
+            DiscordStatus::Idle => "Press enter to connect",
+            DiscordStatus::Connecting => "Connecting...",
+            DiscordStatus::Connected => "Connected!",
+            DiscordStatus::Failed(_) => "Uh oh, something went wrong.",
+            _ => "",
+        };
+
+        let status_text = Paragraph::new(status_text);
+
         let help_text = match self.selected_field {
             SelectedField::BotToken => BOT_TOKEN_HELP,
             SelectedField::UserId => USER_ID_HELP,
@@ -115,6 +125,7 @@ impl Widget for &SetupView {
             .constraints([
                 Constraint::Length(3),
                 Constraint::Length(3),
+                Constraint::Length(2),
                 Constraint::Percentage(100),
             ])
             .margin(1)
@@ -123,7 +134,8 @@ impl Widget for &SetupView {
 
         self.bot_token.render(chunks[0], buf);
         self.user_id.render(chunks[1], buf);
-        help_text.render(chunks[2], buf);
+        status_text.render(chunks[2], buf);
+        help_text.render(chunks[3], buf);
     }
 }
 
