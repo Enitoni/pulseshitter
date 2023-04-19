@@ -1,5 +1,5 @@
 use crossterm::{
-    event::{self, read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -10,23 +10,22 @@ use std::{
         Arc,
     },
     thread,
-    time::Duration,
 };
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Paragraph, Widget},
     Terminal,
 };
 
 mod field;
 mod setup;
 
-use crate::state::State;
+use crate::App;
 
 use self::setup::SetupView;
 
-pub fn run_ui(state: Arc<State>) -> Result<(), io::Error> {
+pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
     enable_raw_mode()?;
 
     let mut stdout = io::stdout();
@@ -38,7 +37,7 @@ pub fn run_ui(state: Arc<State>) -> Result<(), io::Error> {
     let events = run_event_loop();
 
     loop {
-        let mut view = state.current_view.lock().unwrap();
+        let mut view = app.current_view.lock().unwrap();
 
         let draw_result = terminal.draw(|f| {
             let chunks = Layout::default()
@@ -96,6 +95,12 @@ fn run_event_loop() -> Receiver<Event> {
 pub enum View {
     Setup(SetupView),
     Dashboard,
+}
+
+impl Default for View {
+    fn default() -> Self {
+        Self::Setup(Default::default())
+    }
 }
 
 pub trait ViewController {

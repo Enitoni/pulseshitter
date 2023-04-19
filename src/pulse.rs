@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use pulsectl::controllers::{
     types::{ApplicationInfo, DeviceInfo},
@@ -7,8 +7,8 @@ use pulsectl::controllers::{
 
 /// A friendlier interface for interacting with PulseAudio
 pub struct PulseAudio {
-    device: DeviceInfo,
-    applications: Mutex<Vec<Application>>,
+    device: Arc<DeviceInfo>,
+    applications: Arc<Mutex<Vec<Application>>>,
 }
 
 impl PulseAudio {
@@ -20,7 +20,7 @@ impl PulseAudio {
             .expect("Could not get default device");
 
         Self {
-            device,
+            device: device.into(),
             applications: Default::default(),
         }
     }

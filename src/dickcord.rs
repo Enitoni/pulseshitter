@@ -13,9 +13,9 @@ use tokio::runtime::Runtime;
 
 /// Main Discord connection state managing
 #[derive(Default)]
-struct Discord {
+pub struct Discord {
     client: Arc<Mutex<Option<DroppableClient>>>,
-    status: Arc<Mutex<DiscordStatus>>,
+    pub status: Arc<Mutex<DiscordStatus>>,
 }
 
 impl Discord {
@@ -33,7 +33,7 @@ impl Discord {
 }
 
 #[derive(Default)]
-enum DiscordStatus {
+pub enum DiscordStatus {
     #[default]
     Idle,
     Connecting,
@@ -43,7 +43,7 @@ enum DiscordStatus {
     Failed(DiscordError),
 }
 
-enum DiscordError {
+pub enum DiscordError {
     Serenity(SerenityError),
     Songbird(JoinError),
 }
