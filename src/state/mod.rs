@@ -59,16 +59,16 @@ impl Default for View {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct Config {
-    bot_token: String,
-    user_id: String,
+    pub bot_token: String,
+    pub user_id: u64,
 }
 
 impl Config {
     const FILE_NAME: &str = "config.ron";
 
-    pub fn new(bot_token: String, user_id: String) -> Self {
+    pub fn new(bot_token: String, user_id: u64) -> Self {
         Self { bot_token, user_id }
     }
 
