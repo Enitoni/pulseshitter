@@ -1,37 +1,107 @@
-use std::env;
-use std::sync::mpsc::SyncSender;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use crate::state::Config;
 use serenity::async_trait;
+use serenity::client::bridge::gateway::ShardManager;
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::{ChannelType, GuildChannel, GuildId};
+use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
+use songbird::error::JoinError;
 use songbird::SerenityInit;
+use tokio::runtime::Runtime;
 
-use crate::audio::AudioSystem;
+/// Main Discord connection state managing
+#[derive(Default)]
+struct Discord {
+    client: Arc<Mutex<Option<DroppableClient>>>,
+    status: Arc<Mutex<DiscordStatus>>,
+}
 
-struct Handler {
+impl Discord {
+    pub fn connect(&self, config: Config) {
+        let mut client = self.client.lock().unwrap();
+
+        // Kill the current connection
+        if client.is_some() {
+            *client = None;
+        }
+
+        *(self.status.lock().unwrap()) = DiscordStatus::Connecting;
+        *client = DroppableClient::new(self.status.clone(), config).into();
+    }
+}
+
+#[derive(Default)]
+enum DiscordStatus {
+    #[default]
+    Idle,
+    Connecting,
+    Connected,
+    Joining(GuildChannel),
+    Active(GuildChannel),
+    Failed(DiscordError),
+}
+
+enum DiscordError {
+    Serenity(SerenityError),
+    Songbird(JoinError),
+}
+
+struct Bot {
     user_id: u64,
-    audio: Arc<AudioSystem>,
-    ready: SyncSender<()>,
+    status: Arc<Mutex<DiscordStatus>>,
+}
+
+impl Bot {
+    async fn connect_and_stream(&self, context: Context, channel: GuildChannel) {
+        {
+            *(self.status.lock().unwrap()) = DiscordStatus::Joining(channel.clone());
+        }
+
+        let manager = songbird::get(&context).await.unwrap();
+        let (handler, result) = manager.join(channel.guild_id, channel.id).await;
+
+        if let Err(why) = result {
+            *(self.status.lock().unwrap()) = DiscordStatus::Failed(DiscordError::Songbird(why));
+            return;
+        }
+
+        *(self.status.lock().unwrap()) = DiscordStatus::Active(channel.clone());
+        let mut _call = handler.lock().await;
+    }
 }
 
 #[async_trait]
-impl EventHandler for Handler {
+impl EventHandler for Bot {
     async fn ready(&self, context: Context, _ready: Ready) {
+        {
+            *(self.status.lock().unwrap()) = DiscordStatus::Connected;
+        }
+
         let guilds = context.cache.guilds();
-        let channel = find_voice_channel(&context, self.user_id, guilds.clone())
-            .await
-            .expect("Could not find voice channel");
+        if let Some(channel) = find_voice_channel(&context, self.user_id, guilds.clone()).await {
+            self.connect_and_stream(context, channel).await;
+        }
+    }
 
-        let manager = songbird::get(&context).await.unwrap();
-        let (handler, _) = manager.join(channel.guild_id, channel.id).await;
-        let mut call = handler.lock().await;
+    async fn voice_state_update(&self, context: Context, old: Option<VoiceState>, new: VoiceState) {
+        if let Some((old_member, guild_id)) = old.and_then(|a| a.member.zip(a.guild_id)) {
+            if old_member.user.id == self.user_id {
+                let manager = songbird::get(&context).await.unwrap();
+                let _ = manager.leave(guild_id).await;
+            }
+        }
 
-        let input = self.audio.stream().into_input();
-        call.play_source(input);
+        if let Some((member, channel_id)) = new.member.zip(new.channel_id) {
+            if member.user.id != self.user_id {
+                return;
+            }
 
-        self.ready.send(()).unwrap();
+            if let Some(channel) = context.cache.guild_channel(channel_id) {
+                self.connect_and_stream(context, channel).await;
+            }
+        }
     }
 }
 
@@ -59,33 +129,57 @@ async fn find_voice_channel(
     None
 }
 
-pub async fn dickcord(ready: SyncSender<()>, audio: Arc<AudioSystem>) {
-    let token =
-        env::var("DISCORD_TOKEN").expect("Expected a DISCORD_TOKEN in the environment youi fhfjck");
+/// A Discord client that can be stopped by dropping it
+struct DroppableClient {
+    manager: Arc<tokio::sync::Mutex<ShardManager>>,
+    rt: Arc<Runtime>,
+}
 
-    let user_id: u64 = env::var("DISCORD_USER")
-        .expect("Expected a DISCORD_USER id in the environment. Who am i supposed to follow?")
-        .parse()
-        .unwrap();
+impl DroppableClient {
+    pub fn new(status: Arc<Mutex<DiscordStatus>>, config: Config) -> Self {
+        let rt = Runtime::new().unwrap();
 
-    let handler = Handler {
-        user_id,
-        ready,
-        audio,
-    };
+        let handler = Bot {
+            status: status.clone(),
+            user_id: config.user_id,
+        };
 
-    let intents = GatewayIntents::GUILDS
+        let mut new_client = rt.block_on(async move {
+            Client::builder(&config.bot_token, intents())
+                .register_songbird()
+                .event_handler(handler)
+                .await
+                .expect("Err creating client")
+        });
+
+        let manager = new_client.shard_manager.clone();
+
+        rt.spawn(async move {
+            if let Err(why) = new_client.start().await {
+                *(status.lock().unwrap()) = DiscordStatus::Failed(DiscordError::Serenity(why));
+            }
+        });
+
+        Self {
+            manager,
+            rt: Arc::new(rt),
+        }
+    }
+}
+
+impl Drop for DroppableClient {
+    fn drop(&mut self) {
+        let manager = self.manager.lock();
+
+        self.rt.block_on(async move {
+            manager.await.shutdown_all().await;
+        })
+    }
+}
+
+fn intents() -> GatewayIntents {
+    GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::GUILD_VOICE_STATES;
-
-    let mut client = Client::builder(&token, intents)
-        .register_songbird()
-        .event_handler(handler)
-        .await
-        .expect("Err creating client");
-
-    if let Err(why) = client.start().await {
-        println!("Client error: {:?}", why);
-    }
+        | GatewayIntents::GUILD_VOICE_STATES
 }
