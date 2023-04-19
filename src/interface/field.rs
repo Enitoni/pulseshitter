@@ -46,7 +46,8 @@ impl ViewController for Field {
 
 impl Widget for &Field {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        let text = Paragraph::new(self.label.clone());
+        let text =
+            Paragraph::new(self.label.clone()).style(Style::default().add_modifier(Modifier::BOLD));
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)

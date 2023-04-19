@@ -77,7 +77,7 @@ impl Widget for &SetupView {
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(2), Constraint::Length(2)])
+            .constraints([Constraint::Length(2), Constraint::Length(3)])
             .margin(1)
             .horizontal_margin(2)
             .split(block_inner);
