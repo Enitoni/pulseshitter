@@ -237,6 +237,15 @@ impl ParecEvent {
 
         None
     }
+
+    /// Returns true if Parec moved or connected to a different stream
+    pub fn is_invalid(&self, correct_device: String) -> bool {
+        match self {
+            Self::Connected(device, _) => device.contains(&correct_device),
+            Self::StreamMoved => false,
+            _ => false,
+        }
+    }
 }
 
 /// Runs a thread to check when the parec stream moves or is incorrect
@@ -257,36 +266,36 @@ fn poll_parec_events(audio: Arc<AudioSystem>) {
 
                     if let Some(event) = event {
                         let selected_app = audio.selected_app.lock().unwrap();
+                        let correct_device = audio.pulse.device_name();
 
                         if let Some(selected_app) = &*selected_app {
+                            if event.is_invalid(correct_device) {
+                                eprintln!("Invalid device, stopping!");
+
+                                *(audio.status.lock().unwrap()) =
+                                    AudioStatus::Searching(selected_app.clone());
+
+                                audio.stream.clear();
+                                break;
+                            }
+
                             match event {
                                 ParecEvent::TimedOut => {
+                                    eprintln!("Timed out");
+
                                     *(audio.status.lock().unwrap()) =
                                         AudioStatus::Failed("The stream timed out.".to_string());
                                 }
-                                ParecEvent::Connected(device, _) => {
-                                    if !device.contains(&audio.pulse.device_name()) {
-                                        *(audio.status.lock().unwrap()) =
-                                            AudioStatus::Searching(selected_app.clone());
-
-                                        audio.stream.clear();
-                                        break;
-                                    }
+                                ParecEvent::Connected(_, _) => {
+                                    eprintln!("Connected!");
 
                                     *(audio.status.lock().unwrap()) =
                                         AudioStatus::Connected(selected_app.clone());
                                 }
                                 ParecEvent::Time(_, latency) => {
-                                    dbg!(&latency);
                                     audio.latency.store(latency);
                                 }
-                                ParecEvent::StreamMoved => {
-                                    *(audio.status.lock().unwrap()) =
-                                        AudioStatus::Searching(selected_app.clone());
-
-                                    audio.stream.clear();
-                                    break;
-                                }
+                                _ => {}
                             }
                         }
                     }
