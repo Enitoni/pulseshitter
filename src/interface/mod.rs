@@ -12,6 +12,7 @@ use std::{
         Arc,
     },
     thread,
+    time::Duration,
 };
 use tui::{
     backend::CrosstermBackend,
@@ -63,6 +64,10 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
             if let Event::Key(key) = &event {
                 if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
                     app.action_sender.send(Action::Exit).unwrap();
+
+                    // Allow cleanup
+                    thread::sleep(Duration::from_millis(200));
+
                     break;
                 }
             }
