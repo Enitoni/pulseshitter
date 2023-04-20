@@ -7,11 +7,7 @@ use tui::{
     widgets::{Paragraph, Widget},
 };
 
-use crate::{
-    audio::SelectedApp,
-    pulse::{Application, PulseAudio},
-    Action,
-};
+use crate::{audio::SelectedApp, pulse::PulseAudio, Action};
 
 use super::ViewController;
 

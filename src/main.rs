@@ -1,5 +1,4 @@
 use std::{
-    io::Stdin,
     sync::{Arc, Mutex},
     thread,
 };
