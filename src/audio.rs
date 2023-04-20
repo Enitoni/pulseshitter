@@ -250,45 +250,47 @@ fn poll_parec_events(audio: Arc<AudioSystem>) {
         match stderr {
             Some(stderr) => {
                 let mut reader = BufReader::new(stderr);
-                let mut line = Vec::new();
 
-                reader.read_until(13, &mut line).expect("Read line");
-                let line = String::from_utf8(line).unwrap_or_default();
+                loop {
+                    let mut line = Vec::new();
 
-                dbg!(&line);
-                let event = ParecEvent::parse(line);
+                    reader.read_until(13, &mut line).expect("Read line");
 
-                if let Some(event) = event {
-                    let selected_app = audio.selected_app.lock().unwrap();
+                    let line = String::from_utf8(line).unwrap_or_default();
+                    let event = ParecEvent::parse(line);
 
-                    if let Some(selected_app) = &*selected_app {
-                        match event {
-                            ParecEvent::TimedOut => {
-                                *(audio.status.lock().unwrap()) =
-                                    AudioStatus::Failed("The stream timed out.".to_string());
-                            }
-                            ParecEvent::Connected(device, _) => {
-                                if !device.contains(&audio.pulse.device_name()) {
+                    if let Some(event) = event {
+                        let selected_app = audio.selected_app.lock().unwrap();
+
+                        if let Some(selected_app) = &*selected_app {
+                            match event {
+                                ParecEvent::TimedOut => {
+                                    *(audio.status.lock().unwrap()) =
+                                        AudioStatus::Failed("The stream timed out.".to_string());
+                                }
+                                ParecEvent::Connected(device, _) => {
+                                    if !device.contains(&audio.pulse.device_name()) {
+                                        *(audio.status.lock().unwrap()) =
+                                            AudioStatus::Searching(selected_app.clone());
+
+                                        audio.stream.clear();
+                                        break;
+                                    }
+
+                                    *(audio.status.lock().unwrap()) =
+                                        AudioStatus::Connected(selected_app.clone());
+                                }
+                                ParecEvent::Time(_, latency) => {
+                                    dbg!(&latency);
+                                    audio.latency.store(latency);
+                                }
+                                ParecEvent::StreamMoved => {
                                     *(audio.status.lock().unwrap()) =
                                         AudioStatus::Searching(selected_app.clone());
 
                                     audio.stream.clear();
                                     break;
                                 }
-
-                                *(audio.status.lock().unwrap()) =
-                                    AudioStatus::Connected(selected_app.clone());
-                            }
-                            ParecEvent::Time(_, latency) => {
-                                dbg!(&latency);
-                                audio.latency.store(latency);
-                            }
-                            ParecEvent::StreamMoved => {
-                                *(audio.status.lock().unwrap()) =
-                                    AudioStatus::Searching(selected_app.clone());
-
-                                audio.stream.clear();
-                                break;
                             }
                         }
                     }
