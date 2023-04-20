@@ -21,7 +21,12 @@ impl Widget for &AudioModule {
 
         let block_inner = {
             let area = block.inner(area);
-            tui::layout::Rect::new(area.left() + 2, area.top() + 1, area.height - 1, area.width)
+            tui::layout::Rect::new(
+                area.left() + 2,
+                area.top() + 1,
+                area.width - 2,
+                area.height - 1,
+            )
         };
 
         dbg!(&block_inner, &area);
