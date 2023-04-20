@@ -95,13 +95,13 @@ impl EventHandler for Bot {
             *(self.status.lock().unwrap()) = DiscordStatus::Connected;
         }
 
+        self.actions.send(Action::Activate).unwrap();
+
         let guilds = context.cache.guilds();
 
         if let Some(channel) = find_voice_channel(&context, self.user_id, guilds.clone()).await {
             self.connect_and_stream(context, channel).await;
         }
-
-        self.actions.send(Action::Activate).unwrap();
     }
 
     async fn voice_state_update(&self, context: Context, old: Option<VoiceState>, new: VoiceState) {
