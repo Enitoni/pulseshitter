@@ -2,7 +2,10 @@ use std::sync::{Arc, Mutex};
 
 use crossbeam::channel::Sender;
 use crossterm::event::{Event, KeyCode};
-use tui::widgets::{Paragraph, Widget};
+use tui::{
+    style::{Color, Style},
+    widgets::{Paragraph, Widget},
+};
 
 use crate::{
     audio::SelectedApp,
@@ -37,6 +40,16 @@ impl AppSelector {
         let new_index = ((*selected_index) as isize + amount).rem_euclid(app_length);
         *selected_index = new_index as usize;
     }
+
+    pub fn select(&self) {
+        let selected_index = self.selected_index.lock().unwrap();
+
+        if let Some(app) = self.pulse.applications().get(*selected_index) {
+            self.actions
+                .send(Action::SetApplication(app.to_owned()))
+                .unwrap();
+        }
+    }
 }
 
 impl Widget for &AppSelector {
@@ -45,16 +58,33 @@ impl Widget for &AppSelector {
         let apps = self.pulse.applications();
 
         let selected_index = self.selected_index.lock().unwrap();
+        let selected_app = self.selected_app.lock().unwrap();
+
         let top = area.top();
 
         for (index, app) in apps.iter().enumerate() {
             let is_over = *selected_index == index;
 
+            let is_active = selected_app
+                .as_ref()
+                .map(|f| f.sink_input_index == app.sink_input_index)
+                .unwrap_or_default();
+
             let paragraph_area =
                 tui::layout::Rect::new(area.left(), top + index as u16, area.width, 1);
 
-            let symbol = if is_over { HOVER } else { IDLE };
-            let paragraph = Paragraph::new(format!("{} {}", symbol, app.name.clone()));
+            let symbol = if is_active {
+                ACTIVE_SYMBOL
+            } else if is_over {
+                HOVER_SYMBOL
+            } else {
+                IDLE_SYMBOL
+            };
+
+            let color = if is_active { ACTIVE_COLOR } else { IDLE_COLOR };
+
+            let paragraph = Paragraph::new(format!("{} {}", symbol, app.name.clone()))
+                .style(Style::default().fg(color));
 
             paragraph.render(paragraph_area, buf);
         }
@@ -67,11 +97,16 @@ impl ViewController for AppSelector {
             match key.code {
                 KeyCode::Up => self.navigate(-1),
                 KeyCode::Down => self.navigate(1),
+                KeyCode::Enter => self.select(),
                 _ => {}
             }
         }
     }
 }
 
-const IDLE: &str = "○";
-const HOVER: &str = "●";
+const IDLE_SYMBOL: &str = "○";
+const HOVER_SYMBOL: &str = "●";
+const ACTIVE_SYMBOL: &str = "►";
+
+const ACTIVE_COLOR: Color = Color::Green;
+const IDLE_COLOR: Color = Color::Reset;

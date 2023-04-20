@@ -7,7 +7,7 @@ use std::{
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::Discord;
 use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
-use pulse::PulseAudio;
+use pulse::{Application, PulseAudio};
 use state::Config;
 
 use crate::audio::AudioSystem;
@@ -107,12 +107,14 @@ impl App {
 
                 *view = View::Dashboard(dashboard_view);
             }
+            Action::SetApplication(app) => self.audio.set_application(app),
         };
     }
 }
 
 pub enum Action {
     SetConfig(Config),
+    SetApplication(Application),
     Activate,
 }
 
