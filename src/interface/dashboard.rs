@@ -40,6 +40,7 @@ impl Widget for &DashboardView {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(area.width - 34), Constraint::Length(32)])
+            .horizontal_margin(4)
             .split(area);
 
         let sidebar_chunks = Layout::default()
