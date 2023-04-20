@@ -56,7 +56,7 @@ impl Widget for &AudioModule {
             _ => Color::Reset,
         };
 
-        let paragraph = Paragraph::new(format!("{} {}", status_symbol, status_text))
+        let paragraph = Paragraph::new(format!("{}  {}", status_symbol, status_text))
             .style(Style::default().fg(status_color));
 
         paragraph.render(block_inner, buf);
