@@ -240,8 +240,8 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                 let mut producer = producer.lock().unwrap();
                 let mut buf = [0; BUFFER_SIZE];
 
-                let read = stdout.read(&mut buf).unwrap_or_default();
-                producer.push_slice(&buf[..read]);
+                stdout.read_exact(&mut buf).unwrap_or_default();
+                producer.push_slice(&buf);
             }
         }
     });
