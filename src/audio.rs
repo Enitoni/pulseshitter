@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader, Read, Seek};
 use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use songbird::input::reader::MediaSource;
 use songbird::input::{Codec, Container, Input, Reader};
@@ -140,6 +141,7 @@ impl Read for AudioStream {
             }
 
             read += consumer.read(&mut buf[read..]).unwrap_or_default();
+            thread::sleep(Duration::from_millis(5));
         }
 
         Ok(buf.len())
