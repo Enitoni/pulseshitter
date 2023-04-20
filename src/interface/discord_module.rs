@@ -1,7 +1,7 @@
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
 use crate::dickcord::{CurrentDiscordStatus, CurrentDiscordUser, DiscordStatus};
@@ -49,9 +49,10 @@ impl Widget for &DiscordModule {
 
         if let DiscordStatus::Failed(err) = &*status {
             let paragraph = Paragraph::new(format!("⚠  Oops! {}", err))
-                .style(Style::default().fg(Color::Yellow));
+                .style(Style::default().fg(Color::Yellow))
+                .wrap(Wrap { trim: false });
 
-            paragraph.render(chunks[0], buf);
+            paragraph.render(block_inner, buf);
         }
 
         if let DiscordStatus::Connecting = *status {
