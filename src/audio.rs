@@ -16,7 +16,7 @@ use crate::pulse::{Application, PulseAudio};
 pub struct AudioSystem {
     pub selected_app: SelectedApp,
     pub status: CurrentAudioStatus,
-    pub latency: AtomicCell<u32>,
+    pub latency: AudioLatency,
 
     pulse: Arc<PulseAudio>,
     stream: AudioStream,
@@ -34,6 +34,7 @@ pub enum AudioStatus {
 
 pub type CurrentAudioStatus = Arc<Mutex<AudioStatus>>;
 pub type SelectedApp = Arc<Mutex<Option<Application>>>;
+pub type AudioLatency = Arc<AtomicCell<u32>>;
 
 impl AudioSystem {
     pub fn new(pulse: Arc<PulseAudio>) -> Self {

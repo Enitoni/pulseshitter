@@ -8,18 +8,23 @@ use tui::{
 };
 
 use crate::{
-    audio::{AudioStatus, CurrentAudioStatus},
+    audio::{AudioLatency, AudioStatus, CurrentAudioStatus},
     pulse::PulseAudio,
 };
 
 pub struct AudioModule {
     status: CurrentAudioStatus,
+    latency: AudioLatency,
     pulse: Arc<PulseAudio>,
 }
 
 impl AudioModule {
-    pub fn new(status: CurrentAudioStatus, pulse: Arc<PulseAudio>) -> Self {
-        Self { status, pulse }
+    pub fn new(status: CurrentAudioStatus, pulse: Arc<PulseAudio>, latency: AudioLatency) -> Self {
+        Self {
+            status,
+            pulse,
+            latency,
+        }
     }
 }
 
@@ -83,7 +88,10 @@ impl Widget for &AudioModule {
             Spans::from(Span::raw(self.pulse.device_name())),
             Spans::default(),
             Spans::from(Span::styled("Latency:", Style::default().fg(Color::Gray))),
-            Spans::from(Span::raw("0ms")),
+            Spans::from(Span::raw(format!(
+                "{}ms",
+                self.latency.load() as f32 / 1000.
+            ))),
         ];
 
         let info_paragraph = Paragraph::new(info_lines).wrap(Wrap { trim: false });
