@@ -20,7 +20,7 @@ impl Widget for &AudioModule {
         let block = Block::default().title("─ Audio ").borders(Borders::all());
         let block_inner = {
             let area = block.inner(area);
-            tui::layout::Rect::new(area.left(), area.top() + 1, area.height - 1, area.width)
+            tui::layout::Rect::new(area.left() + 2, area.top() + 1, area.height - 1, area.width)
         };
 
         dbg!(&block_inner, &area);
@@ -49,7 +49,7 @@ impl Widget for &AudioModule {
             _ => Color::Reset,
         };
 
-        let paragraph = Paragraph::new(format!(" {} {}", status_symbol, status_text))
+        let paragraph = Paragraph::new(format!("{} {}", status_symbol, status_text))
             .style(Style::default().fg(status_color));
 
         block.render(area, buf);
