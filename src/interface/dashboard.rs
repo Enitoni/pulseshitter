@@ -7,7 +7,7 @@ use tui::{
 };
 
 use crate::{
-    audio::{CurrentAudioStatus, SelectedApp},
+    audio::{AudioLatency, CurrentAudioStatus, SelectedApp},
     dickcord::{CurrentDiscordStatus, CurrentDiscordUser},
     pulse::PulseAudio,
     Action,
@@ -31,6 +31,7 @@ pub struct DashboardViewContext {
     pub audio_status: CurrentAudioStatus,
     pub discord_status: CurrentDiscordStatus,
     pub discord_user: CurrentDiscordUser,
+    pub latency: AudioLatency,
 }
 
 impl DashboardView {
@@ -42,7 +43,7 @@ impl DashboardView {
                 context.selected_app,
                 context.actions,
             ),
-            audio_module: AudioModule::new(context.audio_status, context.pulse),
+            audio_module: AudioModule::new(context.audio_status, context.pulse, context.latency),
             discord_module: DiscordModule::new(context.discord_user, context.discord_status),
         }
     }
