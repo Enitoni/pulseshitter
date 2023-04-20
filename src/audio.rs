@@ -1,3 +1,6 @@
+use crossbeam::atomic::AtomicCell;
+use lazy_static::lazy_static;
+use regex::Regex;
 use std::io::{BufRead, BufReader, Read, Seek};
 use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -13,6 +16,7 @@ use crate::pulse::{Application, PulseAudio};
 pub struct AudioSystem {
     pub selected_app: SelectedApp,
     pub status: CurrentAudioStatus,
+    pub latency: AtomicCell<u32>,
 
     pulse: Arc<PulseAudio>,
     stream: AudioStream,
@@ -38,11 +42,12 @@ impl AudioSystem {
             selected_app: Default::default(),
             status: Default::default(),
             stream: Default::default(),
+            latency: Default::default(),
         }
     }
 
     pub fn run(audio: Arc<AudioSystem>) {
-        run_check_thread(audio.clone());
+        poll_parec_events(audio.clone());
         run_respawn_thread(audio);
     }
 
@@ -70,8 +75,9 @@ pub struct AudioStream {
 
 impl AudioStream {
     pub fn respawn(&self, status: CurrentAudioStatus, device: String, app: Application) {
-        let mut status = status.lock().unwrap();
-        *status = AudioStatus::Connecting(app.clone());
+        {
+            *(status.lock().unwrap()) = AudioStatus::Connecting(app.clone());
+        }
 
         match Parec::new(device, app) {
             Ok(new_parec) => {
@@ -79,7 +85,7 @@ impl AudioStream {
                 *parec = Some(new_parec);
             }
             Err(err) => {
-                *status = AudioStatus::Failed(err);
+                *(status.lock().unwrap()) = AudioStatus::Failed(err);
             }
         }
     }
@@ -183,8 +189,55 @@ impl Drop for Parec {
     }
 }
 
+enum ParecEvent {
+    TimedOut,
+    /// Device name, index
+    Connected(String, u32),
+    /// Time, latency
+    Time(f32, u32),
+    StreamMoved,
+}
+
+lazy_static! {
+    static ref CONNECTED_REGEX: Regex =
+        Regex::new(r"Connected to device .*? \(index: (\d*), suspended: no\)").unwrap();
+    static ref TIME_REGEX: Regex =
+        Regex::new(r"Time: (\d+\.\d+) sec; Latency: (\d+) usec.").unwrap();
+}
+
+impl ParecEvent {
+    const STREAM_MOVED_MESSAGE: &str = "Stream moved to";
+    const STREAM_TIMEOUT: &str = "Stream error: Timeout";
+
+    pub fn parse(line: String) -> Option<Self> {
+        if let Some(captures) = CONNECTED_REGEX.captures(&line) {
+            return Some(Self::Connected(
+                captures[1].to_string(),
+                captures[2].parse().expect("Parec gives valid index"),
+            ));
+        }
+
+        if let Some(captures) = TIME_REGEX.captures(&line) {
+            return Some(Self::Time(
+                captures[1].parse().expect("Parec gives valid time"),
+                captures[2].parse().expect("Parec gives valid latency"),
+            ));
+        }
+
+        if line.contains(Self::STREAM_MOVED_MESSAGE) {
+            return Some(Self::StreamMoved);
+        }
+
+        if line.contains(Self::STREAM_TIMEOUT) {
+            return Some(Self::TimedOut);
+        }
+
+        None
+    }
+}
+
 /// Runs a thread to check when the parec stream moves or is incorrect
-fn run_check_thread(audio: Arc<AudioSystem>) {
+fn poll_parec_events(audio: Arc<AudioSystem>) {
     thread::spawn(move || loop {
         let parec_stderr = {
             let mut parec = audio.stream.parec.lock().unwrap();
@@ -194,37 +247,44 @@ fn run_check_thread(audio: Arc<AudioSystem>) {
         match parec_stderr {
             Some(stderr) => {
                 let mut reader = BufReader::new(stderr);
-                let device = audio.pulse.device_name();
 
                 loop {
                     let mut line = String::new();
                     reader.read_line(&mut line).expect("Read line");
 
-                    let mut status = audio.status.lock().unwrap();
-                    let selected_app = audio.selected_app.lock().unwrap();
+                    let event = ParecEvent::parse(line);
 
-                    let selected_app = match &*selected_app {
-                        Some(app) => app,
-                        None => break,
-                    };
+                    if let Some(event) = event {
+                        let selected_app = audio.selected_app.lock().unwrap();
 
-                    if line.contains(STREAM_TIMEOUT) {
-                        *status = AudioStatus::Failed("The stream timed out.".to_string());
-                        break;
-                    }
+                        if let Some(selected_app) = &*selected_app {
+                            match event {
+                                ParecEvent::TimedOut => {
+                                    *(audio.status.lock().unwrap()) =
+                                        AudioStatus::Failed("The stream timed out.".to_string());
+                                }
+                                ParecEvent::Connected(device, _) => {
+                                    if device != audio.pulse.device_name() {
+                                        *(audio.status.lock().unwrap()) =
+                                            AudioStatus::Searching(selected_app.clone());
 
-                    if line.contains(STREAM_CONNECTED_MESSAGE) && line.contains(&device) {
-                        *status = AudioStatus::Connected(selected_app.clone());
-                    }
+                                        audio.stream.clear();
+                                        break;
+                                    }
 
-                    // Parec connected or moved to the wrong device
-                    if line.contains(STREAM_CONNECTED_MESSAGE) && !line.contains(&device)
-                        || line.contains(STREAM_MOVED_MESSAGE)
-                    {
-                        *status = AudioStatus::Searching(selected_app.clone());
-                        audio.stream.clear();
+                                    *(audio.status.lock().unwrap()) =
+                                        AudioStatus::Connected(selected_app.clone());
+                                }
+                                ParecEvent::Time(_, latency) => audio.latency.store(latency),
+                                ParecEvent::StreamMoved => {
+                                    *(audio.status.lock().unwrap()) =
+                                        AudioStatus::Searching(selected_app.clone());
 
-                        break;
+                                    audio.stream.clear();
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -282,7 +342,3 @@ fn run_respawn_thread(audio: Arc<AudioSystem>) {
         }
     });
 }
-
-const STREAM_TIMEOUT: &str = "Stream error: Timeout";
-const STREAM_CONNECTED_MESSAGE: &str = "Connected to device";
-const STREAM_MOVED_MESSAGE: &str = "Stream moved to";
