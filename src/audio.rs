@@ -211,8 +211,6 @@ impl ParecEvent {
     const STREAM_TIMEOUT: &str = "Stream error: Timeout";
 
     pub fn parse(line: String) -> Option<Self> {
-        eprintln!("{}", &line);
-
         if let Some(captures) = CONNECTED_REGEX.captures(&line) {
             return Some(Self::Connected(
                 captures[1].to_string(),
