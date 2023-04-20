@@ -49,7 +49,7 @@ impl AudioSystem {
 
     pub fn run(audio: Arc<AudioSystem>) {
         poll_parec_events(audio.clone());
-        run_respawn_thread(audio);
+        //run_respawn_thread(audio);
     }
 
     pub fn set_application(&self, app: Application) {
