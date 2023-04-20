@@ -132,7 +132,15 @@ impl AudioStream {
 impl Read for AudioStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut consumer = self.0.lock().unwrap();
-        let _ = consumer.read_exact(buf);
+        let mut read = 0;
+
+        loop {
+            if read == buf.len() {
+                break;
+            }
+
+            read += consumer.read(&mut buf[read..]).unwrap_or_default();
+        }
 
         Ok(buf.len())
     }
@@ -240,8 +248,8 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                 let mut producer = producer.lock().unwrap();
                 let mut buf = [0; BUFFER_SIZE];
 
-                stdout.read_exact(&mut buf).unwrap_or_default();
-                producer.push_slice(&buf);
+                let read = stdout.read(&mut buf).unwrap_or_default();
+                producer.push_slice(&buf[..read]);
             }
         }
     });
