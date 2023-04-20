@@ -34,6 +34,8 @@ impl App {
 
         // Existing setup
         if let Some(config) = config {
+            discord.connect(config.clone());
+
             return Self {
                 discord,
                 action_sender,
