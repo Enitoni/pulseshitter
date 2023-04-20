@@ -11,10 +11,12 @@ use crate::pulse::{Application, PulseAudio};
 
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
-    selected_app: Mutex<Option<Application>>,
+    pub selected_app: SelectedApp,
     pulse: Arc<PulseAudio>,
     stream: AudioStream,
 }
+
+pub type SelectedApp = Arc<Mutex<Option<Application>>>;
 
 impl AudioSystem {
     pub fn new(pulse: Arc<PulseAudio>) -> Self {
