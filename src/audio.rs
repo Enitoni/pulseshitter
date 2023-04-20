@@ -211,6 +211,8 @@ impl ParecEvent {
     const STREAM_TIMEOUT: &str = "Stream error: Timeout";
 
     pub fn parse(line: String) -> Option<Self> {
+        eprintln!("{}", &line);
+
         if let Some(captures) = CONNECTED_REGEX.captures(&line) {
             return Some(Self::Connected(
                 captures[1].to_string(),
@@ -276,7 +278,10 @@ fn poll_parec_events(audio: Arc<AudioSystem>) {
                                     *(audio.status.lock().unwrap()) =
                                         AudioStatus::Connected(selected_app.clone());
                                 }
-                                ParecEvent::Time(_, latency) => audio.latency.store(latency),
+                                ParecEvent::Time(_, latency) => {
+                                    dbg!(&latency);
+                                    audio.latency.store(latency);
+                                }
                                 ParecEvent::StreamMoved => {
                                     *(audio.status.lock().unwrap()) =
                                         AudioStatus::Searching(selected_app.clone());
