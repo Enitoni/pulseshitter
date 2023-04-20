@@ -23,6 +23,8 @@ impl Widget for &AudioModule {
             tui::layout::Rect::new(area.left(), area.top() + 1, area.height - 1, area.width)
         };
 
+        dbg!(&block_inner, &area);
+
         let status = self.status.lock().unwrap();
 
         let status_text = match &*status {
