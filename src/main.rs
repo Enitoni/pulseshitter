@@ -45,6 +45,12 @@ impl App {
         if let Some(config) = config {
             discord.connect(audio.stream(), config.clone(), action_sender.clone());
 
+            let dashboard_view = DashboardView::new(
+                pulse.clone(),
+                audio.selected_app.clone(),
+                action_sender.clone(),
+            );
+
             return Self {
                 audio,
                 pulse,
@@ -52,7 +58,7 @@ impl App {
                 action_sender,
                 action_receiver,
                 config: Some(config).into(),
-                current_view: View::Dashboard(DashboardView).into(),
+                current_view: View::Dashboard(dashboard_view).into(),
             };
         }
 
@@ -92,7 +98,14 @@ impl App {
                     .save();
 
                 let mut view = self.current_view.lock().unwrap();
-                *view = View::Dashboard(DashboardView);
+
+                let dashboard_view = DashboardView::new(
+                    self.pulse.clone(),
+                    self.audio.selected_app.clone(),
+                    self.action_sender.clone(),
+                );
+
+                *view = View::Dashboard(dashboard_view);
             }
         };
     }

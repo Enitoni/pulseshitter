@@ -20,6 +20,7 @@ use tui::{
     Terminal,
 };
 
+mod app_selector;
 mod field;
 
 pub mod dashboard;
