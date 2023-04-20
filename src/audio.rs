@@ -71,12 +71,12 @@ pub struct AudioStream {
 impl AudioStream {
     pub fn respawn(&self, status: CurrentAudioStatus, device: String, app: Application) {
         let mut status = status.lock().unwrap();
+        *status = AudioStatus::Connecting(app.clone());
 
-        match Parec::new(device, app.clone()) {
+        match Parec::new(device, app) {
             Ok(new_parec) => {
                 let mut parec = self.parec.lock().unwrap();
                 *parec = Some(new_parec);
-                *status = AudioStatus::Connecting(app);
             }
             Err(err) => {
                 *status = AudioStatus::Failed(err);
