@@ -54,7 +54,7 @@ impl Widget for &AppSelector {
         let apps = self.pulse.applications();
 
         let block = Block::default()
-            .title("Applications")
+            .title("─ Applications ")
             .borders(Borders::all());
 
         // Add margins
