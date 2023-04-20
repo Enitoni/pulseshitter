@@ -99,6 +99,7 @@ impl App {
                 *config = Some(new_config);
             }
             Action::Activate => {
+                dbg!("activating...");
                 let config = self.config.lock().unwrap();
 
                 // We save because the config allowed a connection
@@ -106,6 +107,8 @@ impl App {
                     .as_ref()
                     .expect("Cannot activate without config")
                     .save();
+
+                dbg!("activated...");
 
                 let mut view = self.current_view.lock().unwrap();
 
@@ -119,6 +122,7 @@ impl App {
                     latency: self.audio.latency.clone(),
                 };
 
+                dbg!("saved...");
                 let dashboard_view = DashboardView::new(dashboard_context);
 
                 *view = View::Dashboard(dashboard_view);
