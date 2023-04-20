@@ -48,16 +48,16 @@ impl Widget for &DiscordModule {
             .unwrap_or_default();
 
         if let DiscordStatus::Failed(err) = &*status {
-            let paragraph = Paragraph::new(format!("⚠  Oops! {}", err))
-                .style(Style::default().fg(Color::Yellow))
+            let paragraph = Paragraph::new(format!("⚠  An error occurred! {}", err))
+                .style(Style::default().fg(Color::Red))
                 .wrap(Wrap { trim: false });
 
             paragraph.render(block_inner, buf);
         }
 
         if let DiscordStatus::Connecting = *status {
-            let paragraph =
-                Paragraph::new("⭮  Logging in...").style(Style::default().fg(Color::Yellow));
+            let paragraph = Paragraph::new("Logging in, please wait...")
+                .style(Style::default().fg(Color::Yellow));
 
             paragraph.render(chunks[0], buf);
         }
