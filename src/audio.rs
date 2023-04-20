@@ -241,7 +241,7 @@ impl ParecEvent {
     /// Returns true if Parec moved or connected to a different stream
     pub fn is_invalid(&self, correct_device: String) -> bool {
         match self {
-            Self::Connected(device, _) => device.contains(&correct_device),
+            Self::Connected(device, _) => !device.contains(&correct_device),
             Self::StreamMoved => false,
             _ => false,
         }
