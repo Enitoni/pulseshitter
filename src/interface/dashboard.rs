@@ -50,7 +50,7 @@ impl Widget for &DashboardView {
             .split(chunks[1]);
 
         self.app_selector.render(chunks[0], buf);
-        self.audio_module.render(sidebar_chunks[0], buf);
+        //self.audio_module.render(sidebar_chunks[0], buf);
     }
 }
 
