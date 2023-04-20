@@ -26,5 +26,7 @@ impl Widget for &DashboardView {
 }
 
 impl ViewController for DashboardView {
-    fn handle_event(&mut self, event: crossterm::event::Event) {}
+    fn handle_event(&mut self, event: crossterm::event::Event) {
+        self.app_selector.handle_event(event)
+    }
 }
