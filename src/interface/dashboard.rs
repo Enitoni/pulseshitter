@@ -68,7 +68,7 @@ impl Widget for &DashboardView {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(6),
-                Constraint::Length(sidebar_area.height - 7),
+                Constraint::Length(sidebar_area.height - 8),
                 Constraint::Length(2),
             ])
             .split(sidebar_area);
