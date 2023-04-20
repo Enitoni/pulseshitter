@@ -118,6 +118,7 @@ impl App {
                 *view = View::Dashboard(dashboard_view);
             }
             Action::SetApplication(app) => self.audio.set_application(app),
+            Action::Exit => self.discord.disconnect(),
         };
     }
 }
@@ -126,6 +127,7 @@ pub enum Action {
     SetConfig(Config),
     SetApplication(Application),
     Activate,
+    Exit,
 }
 
 fn main() {
