@@ -39,7 +39,7 @@ impl Widget for &DashboardView {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(area.width - 65), Constraint::Length(64)])
+            .constraints([Constraint::Length(area.width - 34), Constraint::Length(32)])
             .margin(1)
             .split(area);
 
@@ -50,7 +50,7 @@ impl Widget for &DashboardView {
             .split(chunks[1]);
 
         self.app_selector.render(chunks[0], buf);
-        //self.audio_module.render(sidebar_chunks[0], buf);
+        self.audio_module.render(chunks[1], buf);
     }
 }
 
