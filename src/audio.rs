@@ -12,10 +12,23 @@ use crate::pulse::{Application, PulseAudio};
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
     pub selected_app: SelectedApp,
+    pub status: CurrentAudioStatus,
+
     pulse: Arc<PulseAudio>,
     stream: AudioStream,
 }
 
+#[derive(Default)]
+pub enum AudioStatus {
+    #[default]
+    Idle,
+    Connecting(Application),
+    Connected(Application),
+    Searching(Application),
+    Failed(String),
+}
+
+pub type CurrentAudioStatus = Arc<Mutex<AudioStatus>>;
 pub type SelectedApp = Arc<Mutex<Option<Application>>>;
 
 impl AudioSystem {
@@ -23,6 +36,7 @@ impl AudioSystem {
         Self {
             pulse,
             selected_app: Default::default(),
+            status: Default::default(),
             stream: Default::default(),
         }
     }
@@ -38,7 +52,8 @@ impl AudioSystem {
             *selected_app = Some(app.clone());
         }
 
-        self.stream.respawn(self.pulse.device_name(), app)
+        self.stream
+            .respawn(self.status.clone(), self.pulse.device_name(), app)
     }
 
     pub fn stream(&self) -> AudioStream {
@@ -54,11 +69,19 @@ pub struct AudioStream {
 }
 
 impl AudioStream {
-    pub fn respawn(&self, device: String, app: Application) {
-        let new_parec = Parec::new(device, app);
+    pub fn respawn(&self, status: CurrentAudioStatus, device: String, app: Application) {
+        let mut status = status.lock().unwrap();
 
-        let mut parec = self.parec.lock().unwrap();
-        *parec = Some(new_parec);
+        match Parec::new(device, app.clone()) {
+            Ok(new_parec) => {
+                let mut parec = self.parec.lock().unwrap();
+                *parec = Some(new_parec);
+                *status = AudioStatus::Connecting(app);
+            }
+            Err(err) => {
+                *status = AudioStatus::Failed(err);
+            }
+        }
     }
 
     pub fn clear(&self) {
@@ -125,7 +148,7 @@ struct Parec {
 }
 
 impl Parec {
-    fn new(device: String, app: Application) -> Self {
+    fn new(device: String, app: Application) -> Result<Self, String> {
         let mut child = Command::new("parec")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -140,16 +163,16 @@ impl Parec {
             .arg("--latency=1")
             .arg("--process-time=1")
             .spawn()
-            .expect("Could not spawn parec instance");
+            .map_err(|err| format!("Could not spawn Parec instance: {}", err))?;
 
         let stdout = child.stdout.take().expect("Take stdout from child");
         let stderr = child.stderr.take().expect("Take stderr from child");
 
-        Self {
+        Ok(Self {
             child: child.into(),
             stderr: Some(stderr),
             stdout,
-        }
+        })
     }
 }
 
@@ -177,14 +200,30 @@ fn run_check_thread(audio: Arc<AudioSystem>) {
                     let mut line = String::new();
                     reader.read_line(&mut line).expect("Read line");
 
-                    // eprint!("{}", line);
+                    let mut status = audio.status.lock().unwrap();
+                    let selected_app = audio.selected_app.lock().unwrap();
 
-                    // Parec connected or moved to the wrong device, or timed out
+                    let selected_app = match &*selected_app {
+                        Some(app) => app,
+                        None => break,
+                    };
+
+                    if line.contains(STREAM_TIMEOUT) {
+                        *status = AudioStatus::Failed("The stream timed out.".to_string());
+                        break;
+                    }
+
+                    if line.contains(STREAM_CONNECTED_MESSAGE) && line.contains(&device) {
+                        *status = AudioStatus::Connected(selected_app.clone());
+                    }
+
+                    // Parec connected or moved to the wrong device
                     if line.contains(STREAM_CONNECTED_MESSAGE) && !line.contains(&device)
                         || line.contains(STREAM_MOVED_MESSAGE)
-                        || line.contains(STREAM_TIMEOUT)
                     {
+                        *status = AudioStatus::Searching(selected_app.clone());
                         audio.stream.clear();
+
                         break;
                     }
                 }
