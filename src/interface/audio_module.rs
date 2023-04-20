@@ -89,7 +89,7 @@ impl Widget for &AudioModule {
             Spans::default(),
             Spans::from(Span::styled("Latency:", Style::default().fg(Color::Gray))),
             Spans::from(Span::raw(format!(
-                "{}ms",
+                "{:.4}ms",
                 self.latency.load() as f32 / 1000.
             ))),
         ];
