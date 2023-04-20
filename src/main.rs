@@ -43,7 +43,7 @@ impl App {
 
         // Existing setup
         if let Some(config) = config {
-            discord.connect(config.clone(), action_sender.clone());
+            discord.connect(audio.stream(), config.clone(), action_sender.clone());
 
             return Self {
                 audio,
@@ -74,8 +74,12 @@ impl App {
         match action {
             Action::SetConfig(new_config) => {
                 let mut config = self.config.lock().unwrap();
-                self.discord
-                    .connect(new_config.clone(), self.action_sender.clone());
+                self.discord.connect(
+                    self.audio.stream(),
+                    new_config.clone(),
+                    self.action_sender.clone(),
+                );
+
                 *config = Some(new_config);
             }
             Action::Activate => {

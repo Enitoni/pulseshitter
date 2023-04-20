@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::sync::{Arc, Mutex};
 
+use crate::audio::AudioStream;
 use crate::state::Config;
 use crate::Action;
 use crossbeam::channel::Sender;
@@ -22,7 +23,7 @@ pub struct Discord {
 }
 
 impl Discord {
-    pub fn connect(&self, config: Config, actions: Sender<Action>) {
+    pub fn connect(&self, audio_stream: AudioStream, config: Config, actions: Sender<Action>) {
         let mut client = self.client.lock().unwrap();
 
         // Kill the current connection
@@ -31,7 +32,7 @@ impl Discord {
         }
 
         *(self.status.lock().unwrap()) = DiscordStatus::Connecting;
-        *client = DroppableClient::new(self.status.clone(), actions, config).into();
+        *client = DroppableClient::new(audio_stream, self.status.clone(), actions, config).into();
     }
 }
 
@@ -64,6 +65,7 @@ struct Bot {
     user_id: u64,
     status: Arc<Mutex<DiscordStatus>>,
     actions: Sender<Action>,
+    audio_stream: AudioStream,
 }
 
 impl Bot {
@@ -81,7 +83,9 @@ impl Bot {
         }
 
         *(self.status.lock().unwrap()) = DiscordStatus::Active(channel.clone());
-        let mut _call = handler.lock().await;
+        let mut call = handler.lock().await;
+
+        call.play_source(self.audio_stream.clone().into_input());
     }
 }
 
@@ -152,10 +156,16 @@ struct DroppableClient {
 }
 
 impl DroppableClient {
-    pub fn new(status: Arc<Mutex<DiscordStatus>>, actions: Sender<Action>, config: Config) -> Self {
+    pub fn new(
+        audio_stream: AudioStream,
+        status: Arc<Mutex<DiscordStatus>>,
+        actions: Sender<Action>,
+        config: Config,
+    ) -> Self {
         let rt = Runtime::new().unwrap();
 
         let handler = Bot {
+            audio_stream,
             actions,
             status: status.clone(),
             user_id: config.user_id,
