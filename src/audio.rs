@@ -1,16 +1,25 @@
 use crossbeam::atomic::AtomicCell;
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use lazy_static::lazy_static;
 use regex::Regex;
+use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
 use std::io::{BufRead, BufReader, Read, Seek};
 use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
 
 use songbird::input::reader::MediaSource;
 use songbird::input::{Codec, Container, Input, Reader};
 
 use crate::pulse::{Application, PulseAudio};
+
+pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
+pub type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;
+pub type CurrentAudioStatus = Arc<Mutex<AudioStatus>>;
+pub type SelectedApp = Arc<Mutex<Option<Application>>>;
+pub type AudioLatency = Arc<AtomicCell<u32>>;
+
+const BUFFER_SIZE: usize = 4068;
 
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
@@ -19,7 +28,13 @@ pub struct AudioSystem {
     pub latency: AudioLatency,
 
     pulse: Arc<PulseAudio>,
-    stream: AudioStream,
+    child: Arc<AtomicCell<Option<Child>>>,
+
+    sender: Sender<AudioMessage>,
+    receiver: Receiver<AudioMessage>,
+
+    audio_producer: AudioProducer,
+    audio_consumer: AudioConsumer,
 }
 
 #[derive(Default)]
@@ -32,70 +47,77 @@ pub enum AudioStatus {
     Failed(String),
 }
 
-pub type CurrentAudioStatus = Arc<Mutex<AudioStatus>>;
-pub type SelectedApp = Arc<Mutex<Option<Application>>>;
-pub type AudioLatency = Arc<AtomicCell<u32>>;
+pub enum AudioMessage {
+    /// Sent when a parec process has spawned
+    StreamSpawned(ChildStdout, ChildStderr),
+
+    /// Sent when a new parec stream must be opened
+    StreamApplication(Application),
+}
 
 impl AudioSystem {
     pub fn new(pulse: Arc<PulseAudio>) -> Self {
+        let (sender, receiver) = unbounded();
+
+        let (audio_producer, audio_consumer) = HeapRb::new(BUFFER_SIZE).split();
+
         Self {
             pulse,
-            selected_app: Default::default(),
+            child: Default::default(),
             status: Default::default(),
-            stream: Default::default(),
+
             latency: Default::default(),
+            selected_app: Default::default(),
+
+            sender,
+            receiver,
+
+            audio_producer: Mutex::from(audio_producer).into(),
+            audio_consumer: Mutex::from(audio_consumer).into(),
         }
     }
 
     pub fn run(audio: Arc<AudioSystem>) {
-        poll_parec_events(audio.clone());
-        //run_respawn_thread(audio);
+        run_audio_thread(audio);
     }
 
     pub fn set_application(&self, app: Application) {
-        {
-            let mut selected_app = self.selected_app.lock().unwrap();
-            *selected_app = Some(app.clone());
-        }
+        *(self.selected_app.lock().unwrap()) = Some(app.clone());
+        *(self.status.lock().unwrap()) = AudioStatus::Connecting(app.clone());
 
-        self.stream
-            .respawn(self.status.clone(), self.pulse.device_name(), app)
+        thread::spawn({
+            let device = self.pulse.device_name();
+            let sender = self.sender.clone();
+            let status = self.status.clone();
+            let stored_child = self.child.clone();
+
+            move || {
+                match spawn_parec(device, app) {
+                    Ok(mut child) => {
+                        let stdout = child.stdout.take().expect("Take stdout from child");
+                        let stderr = child.stderr.take().expect("Take stderr from child");
+
+                        stored_child.store(Some(child));
+
+                        sender
+                            .send(AudioMessage::StreamSpawned(stdout, stderr))
+                            .unwrap();
+                    }
+                    Err(err) => *(status.lock().unwrap()) = AudioStatus::Failed(err),
+                };
+            }
+        });
     }
 
     pub fn stream(&self) -> AudioStream {
-        self.stream.clone()
+        AudioStream(self.audio_consumer.clone())
     }
 }
 
-/// Provides the raw audio of a parec stream
 #[derive(Clone)]
-pub struct AudioStream {
-    /// The current parec stream, if any
-    parec: Arc<Mutex<Option<Parec>>>,
-}
+pub struct AudioStream(AudioConsumer);
 
 impl AudioStream {
-    pub fn respawn(&self, status: CurrentAudioStatus, device: String, app: Application) {
-        {
-            *(status.lock().unwrap()) = AudioStatus::Connecting(app.clone());
-        }
-
-        match Parec::new(device, app) {
-            Ok(new_parec) => {
-                let mut parec = self.parec.lock().unwrap();
-                *parec = Some(new_parec);
-            }
-            Err(err) => {
-                *(status.lock().unwrap()) = AudioStatus::Failed(err);
-            }
-        }
-    }
-
-    pub fn clear(&self) {
-        let mut parec = self.parec.lock().unwrap();
-        *parec = None;
-    }
-
     pub fn into_input(self) -> Input {
         Input::new(
             true,
@@ -107,28 +129,12 @@ impl AudioStream {
     }
 }
 
-impl Default for AudioStream {
-    fn default() -> Self {
-        Self {
-            parec: Arc::new(Mutex::new(None)),
-        }
-    }
-}
-
 impl Read for AudioStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut lock = self.parec.lock().unwrap();
-        let parec = (*lock).as_mut();
+        let mut consumer = self.0.lock().unwrap();
+        let _ = consumer.read(buf);
 
-        match parec {
-            Some(parec) => {
-                let bytes_read = parec.stdout.read(buf).unwrap_or_default();
-
-                // We don't want to tell songbird that the stream is over
-                Ok(bytes_read.min(buf.len()))
-            }
-            None => Ok(buf.len()),
-        }
+        Ok(buf.len())
     }
 }
 
@@ -183,11 +189,62 @@ impl Parec {
     }
 }
 
+fn spawn_parec(device: String, app: Application) -> Result<Child, String> {
+    Command::new("parec")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .arg("--verbose")
+        .arg("--device")
+        .arg(device)
+        .arg("--monitor-stream")
+        .arg(app.sink_input_index.to_string())
+        .arg("--format=float32le")
+        .arg("--rate=48000")
+        .arg("--channels=2")
+        .arg("--latency=1")
+        .arg("--process-time=1")
+        .spawn()
+        .map_err(|err| format!("Could not spawn Parec instance: {}", err))
+}
+
 // We must implement this otherwise when a Parec stream is dropped, the child will continue to live
 impl Drop for Parec {
     fn drop(&mut self) {
         self.child.lock().unwrap().kill().expect("Child killed");
     }
+}
+
+fn run_audio_thread(audio: Arc<AudioSystem>) {
+    thread::spawn(move || {
+        let mut stdout = None;
+        let mut stderr = None;
+
+        let receiver = audio.receiver.clone();
+        let producer = audio.audio_producer.clone();
+
+        loop {
+            if let Ok(event) = receiver.try_recv() {
+                match event {
+                    AudioMessage::StreamSpawned(new_stdout, new_stderr) => {
+                        stdout = Some(new_stdout);
+                        stderr = Some(new_stderr);
+                    }
+                    AudioMessage::StreamApplication(app) => {
+                        audio.set_application(app);
+                    }
+                }
+            }
+
+            // Read audio into buffer
+            if let Some(stdout) = stdout.as_mut() {
+                let mut producer = producer.lock().unwrap();
+                let mut buf = [0; BUFFER_SIZE];
+
+                let read = stdout.read(&mut buf).unwrap_or_default();
+                producer.push_slice(&buf[..read]);
+            }
+        }
+    });
 }
 
 enum ParecEvent {
@@ -246,66 +303,6 @@ impl ParecEvent {
     }
 }
 
-/// Runs a thread to check when the parec stream moves or is incorrect
-fn poll_parec_events(audio: Arc<AudioSystem>) {
-    thread::spawn(move || loop {
-        let stderr = {
-            let mut parec = audio.stream.parec.lock().unwrap();
-            (*parec).as_mut().and_then(|parec| parec.stderr.take())
-        };
-
-        match stderr {
-            Some(stderr) => {
-                let mut reader = BufReader::new(stderr);
-
-                loop {
-                    let line = read_from_parec_stderr(&mut reader);
-                    let event = ParecEvent::parse(line);
-
-                    if let Some(event) = event {
-                        let selected_app = audio.selected_app.lock().unwrap();
-                        let correct_device = audio.pulse.device_name();
-
-                        if let Some(selected_app) = &*selected_app {
-                            if event.is_invalid(correct_device) {
-                                eprintln!("Invalid device, stopping!");
-
-                                *(audio.status.lock().unwrap()) =
-                                    AudioStatus::Searching(selected_app.clone());
-
-                                audio.stream.clear();
-                                break;
-                            }
-
-                            match event {
-                                ParecEvent::TimedOut => {
-                                    eprintln!("Timed out");
-
-                                    *(audio.status.lock().unwrap()) =
-                                        AudioStatus::Failed("The stream timed out.".to_string());
-                                }
-                                ParecEvent::Connected(_, _) => {
-                                    eprintln!("Connected!");
-
-                                    *(audio.status.lock().unwrap()) =
-                                        AudioStatus::Connected(selected_app.clone());
-                                }
-                                ParecEvent::Time(_, latency) => {
-                                    audio.latency.store(latency);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-            }
-            None => {
-                thread::sleep(Duration::from_millis(100));
-            }
-        };
-    });
-}
-
 fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> String {
     let mut line = String::new();
     let mut c = [0; 1];
@@ -320,52 +317,4 @@ fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> String {
     }
 
     line
-}
-
-/// Runs a thread that respawns parec when the selected application is ready again
-fn run_respawn_thread(audio: Arc<AudioSystem>) {
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(100));
-
-        let stream_cleared = {
-            let parec = audio.stream.parec.lock().unwrap();
-            parec.is_none()
-        };
-
-        let selected_app = {
-            let selected_app = audio.selected_app.lock().unwrap();
-
-            match (*selected_app).as_ref() {
-                Some(app) => app.clone(),
-                None => continue,
-            }
-        };
-
-        if stream_cleared {
-            loop {
-                thread::sleep(Duration::from_millis(100));
-                audio.pulse.update_applications();
-
-                let apps = {
-                    let mut a = audio.pulse.applications();
-                    a.reverse();
-                    a
-                };
-
-                let app = apps
-                    .iter()
-                    .find(|app| app.sink_input_name == selected_app.sink_input_name)
-                    .or_else(|| apps.iter().find(|app| app.id == selected_app.id))
-                    .or_else(|| {
-                        apps.iter()
-                            .find(|app| app.process_id == selected_app.process_id)
-                    });
-
-                if let Some(app) = app {
-                    audio.set_application(app.to_owned());
-                    break;
-                }
-            }
-        }
-    });
 }
