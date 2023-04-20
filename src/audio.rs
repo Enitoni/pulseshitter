@@ -38,7 +38,6 @@ impl AudioSystem {
             *selected_app = Some(app.clone());
         }
 
-        println!("Spawning recorder for {}", app.name);
         self.stream.respawn(self.pulse.device_name(), app)
     }
 
