@@ -18,10 +18,7 @@ impl AudioModule {
 impl Widget for &AudioModule {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         let block = Block::default().title("─ Audio ").borders(Borders::all());
-        let block_inner = {
-            let area = block.inner(area);
-            tui::layout::Rect::new(area.left(), area.top() + 1, area.height, area.width)
-        };
+        let block_inner = block.inner(area);
 
         let status = self.status.lock().unwrap();
 
