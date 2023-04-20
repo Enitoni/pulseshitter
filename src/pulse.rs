@@ -49,6 +49,12 @@ impl PulseAudio {
     }
 }
 
+impl Default for PulseAudio {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone)]
 pub struct Application {
     pub id: u32,
