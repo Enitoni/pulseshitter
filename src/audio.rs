@@ -252,11 +252,7 @@ fn poll_parec_events(audio: Arc<AudioSystem>) {
                 let mut reader = BufReader::new(stderr);
 
                 loop {
-                    let mut line = Vec::new();
-
-                    reader.read_until(13, &mut line).expect("Read line");
-
-                    let line = String::from_utf8(line).unwrap_or_default();
+                    let line = read_from_parec_stderr(&mut reader);
                     let event = ParecEvent::parse(line);
 
                     if let Some(event) = event {
@@ -301,6 +297,22 @@ fn poll_parec_events(audio: Arc<AudioSystem>) {
             }
         };
     });
+}
+
+fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> String {
+    let mut line = String::new();
+    let mut c = [0; 1];
+
+    loop {
+        buffer.read_exact(&mut c).unwrap();
+
+        match c {
+            [13] | [10] => break,
+            [c] => line.push(c as char),
+        }
+    }
+
+    line
 }
 
 /// Runs a thread that respawns parec when the selected application is ready again
