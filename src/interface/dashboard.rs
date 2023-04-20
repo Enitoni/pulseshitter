@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use crossbeam::channel::Sender;
-use tui::widgets::Widget;
+use tui::{
+    layout::{Constraint, Direction, Layout},
+    widgets::Widget,
+};
 
 use crate::{audio::SelectedApp, pulse::PulseAudio, Action};
 
@@ -21,7 +24,13 @@ impl DashboardView {
 
 impl Widget for &DashboardView {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        self.app_selector.render(area, buf)
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(100), Constraint::Length(64)])
+            .margin(1)
+            .split(area);
+
+        self.app_selector.render(chunks[0], buf)
     }
 }
 
