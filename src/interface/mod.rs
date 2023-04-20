@@ -114,7 +114,7 @@ impl Widget for &View {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         match self {
             View::Setup(setup_view) => setup_view.render(area, buf),
-            View::Dashboard => todo!(),
+            View::Dashboard => {}
         }
     }
 }
