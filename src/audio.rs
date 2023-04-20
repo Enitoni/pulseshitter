@@ -253,6 +253,8 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                 let read = stdout.read(&mut buf).unwrap_or_default();
                 producer.push_slice(&buf[..read]);
             }
+
+            thread::sleep(Duration::from_millis(1));
         }
     });
 }
