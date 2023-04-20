@@ -105,7 +105,7 @@ impl ViewController for View {
     fn handle_event(&mut self, event: Event) {
         match self {
             Self::Setup(setup_view) => setup_view.handle_event(event),
-            Self::Dashboard => todo!(),
+            Self::Dashboard => {}
         }
     }
 }
