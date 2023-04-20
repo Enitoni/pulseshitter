@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crossbeam::channel::Sender;
 use tui::{
     layout::{Constraint, Direction, Layout},
-    widgets::Widget,
+    widgets::{Paragraph, Widget},
 };
 
 use crate::{
@@ -66,12 +66,19 @@ impl Widget for &DashboardView {
 
         let sidebar_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(6), Constraint::Percentage(100)])
+            .constraints([
+                Constraint::Length(6),
+                Constraint::Length(sidebar_area.height - 7),
+                Constraint::Length(2),
+            ])
             .split(sidebar_area);
 
+        let copyright = Paragraph::new("© 2023 Enitoni");
+
         self.app_selector.render(chunks[0], buf);
-        self.audio_module.render(sidebar_chunks[1], buf);
         self.discord_module.render(sidebar_chunks[0], buf);
+        self.audio_module.render(sidebar_chunks[1], buf);
+        copyright.render(sidebar_chunks[2], buf);
     }
 }
 
