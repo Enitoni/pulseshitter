@@ -32,6 +32,7 @@ impl AppSelector {
 
 impl Widget for &AppSelector {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+        self.pulse.update_applications();
         let apps = self.pulse.applications();
 
         let top = area.top();
