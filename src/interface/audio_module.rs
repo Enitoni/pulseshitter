@@ -48,7 +48,8 @@ impl Widget for &AudioModule {
 
         if let AudioStatus::Failed(err) = &*status {
             let paragraph = Paragraph::new(format!("⚠  An error occured! {}", err))
-                .style(Style::default().fg(Color::Red));
+                .style(Style::default().fg(Color::Red))
+                .wrap(Wrap { trim: false });
 
             paragraph.render(block_inner, buf);
             return;
