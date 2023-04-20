@@ -8,6 +8,7 @@ use tui::{
 
 use crate::{
     audio::{CurrentAudioStatus, SelectedApp},
+    dickcord::CurrentDiscordStatus,
     pulse::PulseAudio,
     Action,
 };
@@ -24,12 +25,18 @@ pub struct DashboardViewContext {
     pub selected_app: SelectedApp,
     pub actions: Sender<Action>,
     pub audio_status: CurrentAudioStatus,
+    pub discord_status: CurrentDiscordStatus,
 }
 
 impl DashboardView {
     pub fn new(context: DashboardViewContext) -> Self {
         Self {
-            app_selector: AppSelector::new(context.pulse, context.selected_app, context.actions),
+            app_selector: AppSelector::new(
+                context.pulse,
+                context.discord_status,
+                context.selected_app,
+                context.actions,
+            ),
             audio_module: AudioModule::new(context.audio_status),
         }
     }

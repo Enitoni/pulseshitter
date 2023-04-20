@@ -53,6 +53,7 @@ impl App {
                 pulse: pulse.clone(),
                 actions: action_sender.clone(),
                 audio_status: audio.status.clone(),
+                discord_status: discord.status.clone(),
                 selected_app: audio.selected_app.clone(),
             };
 
@@ -110,6 +111,7 @@ impl App {
                     pulse: self.pulse.clone(),
                     actions: self.action_sender.clone(),
                     audio_status: self.audio.status.clone(),
+                    discord_status: self.discord.status.clone(),
                     selected_app: self.audio.selected_app.clone(),
                 };
 

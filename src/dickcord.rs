@@ -76,6 +76,8 @@ struct Bot {
     audio_stream: AudioStream,
 }
 
+pub type CurrentDiscordStatus = Arc<Mutex<DiscordStatus>>;
+
 impl Bot {
     async fn connect_and_stream(&self, context: Context, channel: GuildChannel) {
         {
