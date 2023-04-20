@@ -43,7 +43,7 @@ impl App {
 
         // Existing setup
         if let Some(config) = config {
-            discord.connect(config.clone());
+            discord.connect(config.clone(), action_sender.clone());
 
             return Self {
                 audio,
@@ -74,8 +74,21 @@ impl App {
         match action {
             Action::SetConfig(new_config) => {
                 let mut config = self.config.lock().unwrap();
-                self.discord.connect(new_config.clone());
+                self.discord
+                    .connect(new_config.clone(), self.action_sender.clone());
                 *config = Some(new_config);
+            }
+            Action::Activate => {
+                let config = self.config.lock().unwrap();
+
+                // We save because the config allowed a connection
+                config
+                    .as_ref()
+                    .expect("Cannot activate without config")
+                    .save();
+
+                let mut view = self.current_view.lock().unwrap();
+                *view = View::Dashboard(DashboardView);
             }
         };
     }
@@ -83,6 +96,7 @@ impl App {
 
 pub enum Action {
     SetConfig(Config),
+    Activate,
 }
 
 fn main() {

@@ -2,6 +2,8 @@ use std::fmt::Display;
 use std::sync::{Arc, Mutex};
 
 use crate::state::Config;
+use crate::Action;
+use crossbeam::channel::Sender;
 use serenity::async_trait;
 use serenity::client::bridge::gateway::ShardManager;
 use serenity::model::gateway::Ready;
@@ -20,7 +22,7 @@ pub struct Discord {
 }
 
 impl Discord {
-    pub fn connect(&self, config: Config) {
+    pub fn connect(&self, config: Config, actions: Sender<Action>) {
         let mut client = self.client.lock().unwrap();
 
         // Kill the current connection
@@ -29,7 +31,7 @@ impl Discord {
         }
 
         *(self.status.lock().unwrap()) = DiscordStatus::Connecting;
-        *client = DroppableClient::new(self.status.clone(), config).into();
+        *client = DroppableClient::new(self.status.clone(), actions, config).into();
     }
 }
 
@@ -61,6 +63,7 @@ impl Display for DiscordError {
 struct Bot {
     user_id: u64,
     status: Arc<Mutex<DiscordStatus>>,
+    actions: Sender<Action>,
 }
 
 impl Bot {
@@ -90,9 +93,12 @@ impl EventHandler for Bot {
         }
 
         let guilds = context.cache.guilds();
+
         if let Some(channel) = find_voice_channel(&context, self.user_id, guilds.clone()).await {
             self.connect_and_stream(context, channel).await;
         }
+
+        self.actions.send(Action::Activate).unwrap();
     }
 
     async fn voice_state_update(&self, context: Context, old: Option<VoiceState>, new: VoiceState) {
@@ -146,10 +152,11 @@ struct DroppableClient {
 }
 
 impl DroppableClient {
-    pub fn new(status: Arc<Mutex<DiscordStatus>>, config: Config) -> Self {
+    pub fn new(status: Arc<Mutex<DiscordStatus>>, actions: Sender<Action>, config: Config) -> Self {
         let rt = Runtime::new().unwrap();
 
         let handler = Bot {
+            actions,
             status: status.clone(),
             user_id: config.user_id,
         };
