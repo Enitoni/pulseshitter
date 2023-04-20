@@ -151,7 +151,7 @@ impl MediaSource for AudioStream {
 struct Parec {
     child: Mutex<Child>,
     stdout: ChildStdout,
-    stderr: ChildStderr,
+    stderr: Option<ChildStderr>,
 }
 
 impl Parec {
@@ -177,7 +177,7 @@ impl Parec {
 
         Ok(Self {
             child: child.into(),
-            stderr,
+            stderr: Some(stderr),
             stdout,
         })
     }
@@ -242,8 +242,10 @@ impl ParecEvent {
 /// Runs a thread to check when the parec stream moves or is incorrect
 fn poll_parec_events(audio: Arc<AudioSystem>) {
     thread::spawn(move || loop {
-        let mut parec = audio.stream.parec.lock().unwrap();
-        let stderr = parec.as_mut().map(|f| &mut f.stderr);
+        let stderr = {
+            let mut parec = audio.stream.parec.lock().unwrap();
+            (*parec).as_mut().and_then(|parec| parec.stderr.take())
+        };
 
         match stderr {
             Some(stderr) => {
