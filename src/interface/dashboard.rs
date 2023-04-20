@@ -32,12 +32,12 @@ impl DashboardView {
     pub fn new(context: DashboardViewContext) -> Self {
         Self {
             app_selector: AppSelector::new(
-                context.pulse,
+                context.pulse.clone(),
                 context.discord_status,
                 context.selected_app,
                 context.actions,
             ),
-            audio_module: AudioModule::new(context.audio_status),
+            audio_module: AudioModule::new(context.audio_status, context.pulse),
         }
     }
 }
