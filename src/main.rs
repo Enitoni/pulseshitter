@@ -54,6 +54,7 @@ impl App {
                 actions: action_sender.clone(),
                 audio_status: audio.status.clone(),
                 discord_status: discord.status.clone(),
+                discord_user: discord.current_user.clone(),
                 selected_app: audio.selected_app.clone(),
             };
 
@@ -113,6 +114,7 @@ impl App {
                     audio_status: self.audio.status.clone(),
                     discord_status: self.discord.status.clone(),
                     selected_app: self.audio.selected_app.clone(),
+                    discord_user: self.discord.current_user.clone(),
                 };
 
                 let dashboard_view = DashboardView::new(dashboard_context);

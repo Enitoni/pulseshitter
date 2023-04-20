@@ -9,6 +9,7 @@ use serenity::async_trait;
 use serenity::client::bridge::gateway::ShardManager;
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::{ChannelType, GuildChannel, GuildId};
+use serenity::model::user::CurrentUser;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use songbird::error::JoinError;
@@ -19,8 +20,13 @@ use tokio::runtime::Runtime;
 #[derive(Default)]
 pub struct Discord {
     client: Arc<Mutex<Option<DroppableClient>>>,
-    pub status: Arc<Mutex<DiscordStatus>>,
+
+    pub current_user: CurrentDiscordUser,
+    pub status: CurrentDiscordStatus,
 }
+
+pub type CurrentDiscordUser = Arc<Mutex<Option<CurrentUser>>>;
+pub type CurrentDiscordStatus = Arc<Mutex<DiscordStatus>>;
 
 impl Discord {
     pub fn connect(&self, audio_stream: AudioStream, config: Config, actions: Sender<Action>) {
@@ -32,7 +38,14 @@ impl Discord {
         }
 
         *(self.status.lock().unwrap()) = DiscordStatus::Connecting;
-        *client = DroppableClient::new(audio_stream, self.status.clone(), actions, config).into();
+        *client = DroppableClient::new(
+            audio_stream,
+            self.status.clone(),
+            self.current_user.clone(),
+            actions,
+            config,
+        )
+        .into();
     }
 
     pub fn disconnect(&self) {
@@ -71,12 +84,11 @@ impl Display for DiscordError {
 
 struct Bot {
     user_id: u64,
-    status: Arc<Mutex<DiscordStatus>>,
+    status: CurrentDiscordStatus,
+    user: CurrentDiscordUser,
     actions: Sender<Action>,
     audio_stream: AudioStream,
 }
-
-pub type CurrentDiscordStatus = Arc<Mutex<DiscordStatus>>;
 
 impl Bot {
     async fn connect_and_stream(&self, context: Context, channel: GuildChannel) {
@@ -100,13 +112,13 @@ impl Bot {
 
 #[async_trait]
 impl EventHandler for Bot {
-    async fn ready(&self, context: Context, _ready: Ready) {
+    async fn ready(&self, context: Context, ready: Ready) {
         {
             *(self.status.lock().unwrap()) = DiscordStatus::Connected;
+            *(self.user.lock().unwrap()) = Some(ready.user.clone());
         }
 
         self.actions.send(Action::Activate).unwrap();
-
         let guilds = context.cache.guilds();
 
         if let Some(channel) = find_voice_channel(&context, self.user_id, guilds.clone()).await {
@@ -167,7 +179,8 @@ struct DroppableClient {
 impl DroppableClient {
     pub fn new(
         audio_stream: AudioStream,
-        status: Arc<Mutex<DiscordStatus>>,
+        status: CurrentDiscordStatus,
+        user: CurrentDiscordUser,
         actions: Sender<Action>,
         config: Config,
     ) -> Self {
@@ -178,6 +191,7 @@ impl DroppableClient {
             actions,
             status: status.clone(),
             user_id: config.user_id,
+            user,
         };
 
         let mut new_client = rt.block_on(async move {
