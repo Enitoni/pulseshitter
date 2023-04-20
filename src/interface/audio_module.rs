@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    text::{Span, Spans, Text},
+    text::{Span, Spans},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
