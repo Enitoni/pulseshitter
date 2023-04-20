@@ -46,25 +46,31 @@ impl Widget for &AudioModule {
 
         let status = self.status.lock().unwrap();
 
+        if let AudioStatus::Failed(err) = &*status {
+            let paragraph = Paragraph::new(format!("⚠  An error occured! {}", err))
+                .style(Style::default().fg(Color::Red));
+
+            paragraph.render(block_inner, buf);
+            return;
+        }
+
         let status_text = match &*status {
             AudioStatus::Idle => "Idle".to_string(),
             AudioStatus::Connecting(app) => format!("Connecting to {}...", app.name),
             AudioStatus::Connected(app) => format!("Streaming {}", app.name),
             AudioStatus::Searching(app) => format!("Reconnecting to {}...", app.name),
-            AudioStatus::Failed(err) => format!("Failed to connect! {}", err),
+            _ => unreachable!(),
         };
 
         let status_symbol = match &*status {
             AudioStatus::Connecting(_) | AudioStatus::Searching(_) => "⭮",
             AudioStatus::Connected(_) => "►",
-            AudioStatus::Failed(_) => "⚠",
             _ => "○",
         };
 
         let status_color = match &*status {
             AudioStatus::Connecting(_) | AudioStatus::Searching(_) => Color::Yellow,
             AudioStatus::Connected(_) => Color::Green,
-            AudioStatus::Failed(_) => Color::Red,
             _ => Color::Reset,
         };
 
