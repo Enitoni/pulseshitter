@@ -60,7 +60,7 @@ impl Widget for &AppSelector {
         // Add margins
         let block_inner = {
             let area = block.inner(area);
-            tui::layout::Rect::new(area.left() + 1, area.top() + 1, area.height, area.width)
+            tui::layout::Rect::new(area.left() + 2, area.top() + 1, area.height, area.width)
         };
 
         block.render(area, buf);
