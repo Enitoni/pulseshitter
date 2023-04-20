@@ -144,6 +144,8 @@ impl Read for AudioStream {
             thread::sleep(Duration::from_millis(5));
         }
 
+        dbg!("reading");
+
         Ok(buf.len())
     }
 }
