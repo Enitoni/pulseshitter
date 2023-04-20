@@ -67,7 +67,7 @@ impl ViewController for SetupView {
         // Don't allow any inputs while it's connecting
         {
             let status = self.status.lock().unwrap();
-            if let DiscordStatus::Idle | DiscordStatus::Failed(_) = *status {
+            if !matches!(*status, DiscordStatus::Idle | DiscordStatus::Failed(_)) {
                 return;
             }
         }
@@ -104,7 +104,9 @@ impl Widget for &SetupView {
         block.render(area, buf);
 
         let status_text = match *(self.status.lock().unwrap()) {
-            DiscordStatus::Idle => "Press enter to connect",
+            DiscordStatus::Idle => {
+                "Press enter to connect when you're done. Press tab to switch between fields."
+            }
             DiscordStatus::Connecting => "Connecting...",
             DiscordStatus::Connected => "Connected!",
             DiscordStatus::Failed(_) => "Uh oh, something went wrong.",
