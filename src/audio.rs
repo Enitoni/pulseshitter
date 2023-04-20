@@ -265,8 +265,7 @@ fn poll_parec_events(audio: Arc<AudioSystem>) {
                                         AudioStatus::Failed("The stream timed out.".to_string());
                                 }
                                 ParecEvent::Connected(device, _) => {
-                                    dbg!(&device, audio.pulse.device_name());
-                                    if device != audio.pulse.device_name() {
+                                    if device.contains(&audio.pulse.device_name()) {
                                         *(audio.status.lock().unwrap()) =
                                             AudioStatus::Searching(selected_app.clone());
 
