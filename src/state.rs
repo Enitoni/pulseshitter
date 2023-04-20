@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::{fs::File, io::Read};
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -25,8 +26,13 @@ impl Config {
     }
 
     pub fn save(&self) {
-        if let Err(err) = ron::to_string(self) {
-            eprintln!("Config save failed: {:?}", err)
+        match ron::to_string(self) {
+            Ok(result) => {
+                File::create(Self::FILE_NAME)
+                    .ok()
+                    .and_then(|mut f| write!(f, "{}", result).ok());
+            }
+            Err(err) => eprintln!("Config save failed: {:?}", err),
         }
     }
 }
