@@ -79,13 +79,12 @@ impl Bot {
 
         if let Err(why) = result {
             *(self.status.lock().unwrap()) = DiscordStatus::Failed(DiscordError::Songbird(why));
-            return;
         }
 
-        *(self.status.lock().unwrap()) = DiscordStatus::Active(channel.clone());
         let mut call = handler.lock().await;
-
         call.play_source(self.audio_stream.clone().into_input());
+
+        *(self.status.lock().unwrap()) = DiscordStatus::Active(channel.clone());
     }
 }
 
