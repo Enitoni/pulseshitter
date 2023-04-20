@@ -74,6 +74,8 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
 
             view.handle_event(event);
         };
+
+        thread::sleep(Duration::from_secs_f32(FPS / 1000.));
     }
 
     disable_raw_mode()?;
@@ -131,3 +133,5 @@ const LOGO: &str = "
 █▀█ █░█ █░░ █▀ █▀▀ █▀ █░█ █ ▀█▀ ▀█▀ █▀▀ █▀█
 █▀▀ █▄█ █▄▄ ▄█ ██▄ ▄█ █▀█ █ ░█░ ░█░ ██▄ █▀▄
 ";
+
+const FPS: f32 = 1000. / 144.;
