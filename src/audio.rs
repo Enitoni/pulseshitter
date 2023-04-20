@@ -250,14 +250,12 @@ fn poll_parec_events(audio: Arc<AudioSystem>) {
         match stderr {
             Some(stderr) => {
                 let mut reader = BufReader::new(stderr);
-
                 let mut line = Vec::new();
-                reader.read_until(0x13, &mut line).expect("Read line");
 
+                reader.read_until(13, &mut line).expect("Read line");
                 let line = String::from_utf8(line).unwrap_or_default();
 
                 dbg!(&line);
-
                 let event = ParecEvent::parse(line);
 
                 if let Some(event) = event {
