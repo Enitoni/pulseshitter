@@ -201,7 +201,7 @@ enum ParecEvent {
 
 lazy_static! {
     static ref CONNECTED_REGEX: Regex =
-        Regex::new(r"Connected to device .*? \(index: (\d*), suspended: no\)").unwrap();
+        Regex::new(r"Connected to device (.*?) \(index: (\d*), suspended: no\)").unwrap();
     static ref TIME_REGEX: Regex =
         Regex::new(r"Time: (\d+\.\d+) sec; Latency: (\d+) usec.").unwrap();
 }
