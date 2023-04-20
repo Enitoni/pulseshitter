@@ -103,14 +103,17 @@ impl Widget for &SetupView {
         let block_inner = block.inner(area);
         block.render(area, buf);
 
-        let status_text = match *(self.status.lock().unwrap()) {
+        let status_text = match &*(self.status.lock().unwrap()) {
             DiscordStatus::Idle => {
                 "Press tab to switch between fields. Press enter to connect when you're done."
+                    .to_string()
             }
-            DiscordStatus::Connecting => "Connecting...",
-            DiscordStatus::Connected => "Connected!",
-            DiscordStatus::Failed(_) => "Uh oh, something went wrong.",
-            _ => "",
+            DiscordStatus::Connecting => "Connecting...".to_string(),
+            DiscordStatus::Connected => "Connected!".to_string(),
+            DiscordStatus::Failed(error) => {
+                format!("Uh oh, something went wrong. {}", error)
+            }
+            _ => String::new(),
         };
 
         let status_text = Paragraph::new(status_text);
