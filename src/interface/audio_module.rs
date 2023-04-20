@@ -19,6 +19,18 @@ impl Widget for &AudioModule {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         let block = Block::default().title("─ Audio ").borders(Borders::all());
 
+        let block_inner = {
+            let area = block.inner(area);
+            tui::layout::Rect::new(
+                area.left() + 2,
+                area.top() + 1,
+                area.width - 2,
+                area.height - 1,
+            )
+        };
+
+        block.render(area, buf);
+
         let status = self.status.lock().unwrap();
 
         let status_text = match &*status {
@@ -44,9 +56,8 @@ impl Widget for &AudioModule {
         };
 
         let paragraph = Paragraph::new(format!("{}  {}", status_symbol, status_text))
-            .style(Style::default().fg(status_color))
-            .block(block);
+            .style(Style::default().fg(status_color));
 
-        paragraph.render(area, buf);
+        paragraph.render(block_inner, buf);
     }
 }
