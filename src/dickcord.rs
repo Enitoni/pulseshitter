@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::sync::{Arc, Mutex};
 
 use crate::state::Config;
@@ -46,6 +47,15 @@ pub enum DiscordStatus {
 pub enum DiscordError {
     Serenity(SerenityError),
     Songbird(JoinError),
+}
+
+impl Display for DiscordError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DiscordError::Serenity(e) => e.fmt(f),
+            DiscordError::Songbird(e) => e.fmt(f),
+        }
+    }
 }
 
 struct Bot {
