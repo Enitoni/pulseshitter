@@ -1,23 +1,31 @@
+use std::sync::Arc;
+
 use tui::{
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::audio::{AudioStatus, CurrentAudioStatus};
+use crate::{
+    audio::{AudioStatus, CurrentAudioStatus},
+    pulse::PulseAudio,
+};
 
 pub struct AudioModule {
     status: CurrentAudioStatus,
+    pulse: Arc<PulseAudio>,
 }
 
 impl AudioModule {
-    pub fn new(status: CurrentAudioStatus) -> Self {
-        Self { status }
+    pub fn new(status: CurrentAudioStatus, pulse: Arc<PulseAudio>) -> Self {
+        Self { status, pulse }
     }
 }
 
 impl Widget for &AudioModule {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        let block = Block::default().title("─ Audio ").borders(Borders::all());
+        let block = Block::default()
+            .title(format!("─ Audio ({}) ", self.pulse.device_name()))
+            .borders(Borders::all());
 
         let block_inner = {
             let area = block.inner(area);
