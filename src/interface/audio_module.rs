@@ -71,13 +71,15 @@ impl Widget for &AudioModule {
         let status_paragraph = Paragraph::new(format!("{}  {}", status_symbol, status_text))
             .style(Style::default().fg(status_color));
 
-        let info_paragraph = Paragraph::new(Spans::from(vec![
-            Span::styled("Device\n", Style::default().fg(Color::Gray)),
-            Span::raw(self.pulse.device_name()),
-            Span::styled("\n\nLatency", Style::default().fg(Color::Gray)),
-            Span::raw("0ms"),
-        ]))
-        .wrap(Wrap { trim: false });
+        let info_lines = vec![
+            Spans::from(Span::styled("Device", Style::default().fg(Color::Gray))),
+            Spans::from(Span::raw(self.pulse.device_name())),
+            Spans::default(),
+            Spans::from(Span::styled("Latency", Style::default().fg(Color::Gray))),
+            Spans::from(Span::raw("0ms")),
+        ];
+
+        let info_paragraph = Paragraph::new(info_lines).wrap(Wrap { trim: false });
 
         status_paragraph.render(chunks[0], buf);
         info_paragraph.render(chunks[1], buf);
