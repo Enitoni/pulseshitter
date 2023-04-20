@@ -56,7 +56,12 @@ impl Widget for &AppSelector {
         let block = Block::default()
             .title("Applications")
             .borders(Borders::all());
-        let block_inner = block.inner(area);
+
+        // Add margins
+        let block_inner = {
+            let area = block.inner(area);
+            tui::layout::Rect::new(area.left() + 1, area.top() + 1, area.height, area.width)
+        };
 
         block.render(area, buf);
 
