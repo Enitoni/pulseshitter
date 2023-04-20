@@ -7,6 +7,7 @@ use std::{
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::Discord;
 use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
+use pulse::PulseAudio;
 use state::Config;
 
 use crate::audio::AudioSystem;
@@ -19,6 +20,9 @@ mod state;
 
 pub struct App {
     config: Mutex<Option<Config>>,
+
+    pulse: Arc<PulseAudio>,
+    audio: Arc<AudioSystem>,
     discord: Discord,
 
     pub current_view: Mutex<View>,
@@ -29,14 +33,21 @@ pub struct App {
 impl App {
     fn new() -> Self {
         let discord = Discord::default();
+        let pulse = Arc::new(PulseAudio::new());
+        let audio = Arc::new(AudioSystem::new(pulse.clone()));
+
         let config = Config::restore();
         let (action_sender, action_receiver) = unbounded();
+
+        AudioSystem::run(audio.clone());
 
         // Existing setup
         if let Some(config) = config {
             discord.connect(config.clone());
 
             return Self {
+                audio,
+                pulse,
                 discord,
                 action_sender,
                 action_receiver,
@@ -54,6 +65,8 @@ impl App {
             action_receiver,
             action_sender,
             discord,
+            pulse,
+            audio,
         }
     }
 
@@ -87,18 +100,4 @@ fn main() {
     });
 
     run_ui(app).unwrap();
-}
-
-trait Prompt {
-    fn prompt(&self, message: &str) -> String;
-}
-
-impl Prompt for Stdin {
-    fn prompt(&self, message: &str) -> String {
-        let mut result = String::new();
-        println!("{}: ", message);
-
-        self.read_line(&mut result).expect("Read line correctly");
-        result
-    }
 }
