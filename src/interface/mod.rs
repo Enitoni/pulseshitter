@@ -1,3 +1,5 @@
+use self::{dashboard::DashboardView, setup::SetupView};
+use crate::App;
 use crossterm::{
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -19,11 +21,9 @@ use tui::{
 };
 
 mod field;
+
+pub mod dashboard;
 pub mod setup;
-
-use crate::App;
-
-use self::setup::SetupView;
 
 pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
     enable_raw_mode()?;
@@ -94,7 +94,7 @@ fn run_event_loop() -> Receiver<Event> {
 
 pub enum View {
     Setup(SetupView),
-    Dashboard,
+    Dashboard(DashboardView),
 }
 
 pub trait ViewController {
@@ -105,7 +105,7 @@ impl ViewController for View {
     fn handle_event(&mut self, event: Event) {
         match self {
             Self::Setup(setup_view) => setup_view.handle_event(event),
-            Self::Dashboard => {}
+            Self::Dashboard(dashboard_view) => dashboard_view.handle_event(event),
         }
     }
 }
@@ -114,7 +114,7 @@ impl Widget for &View {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         match self {
             View::Setup(setup_view) => setup_view.render(area, buf),
-            View::Dashboard => {}
+            View::Dashboard(dashboard_view) => dashboard_view.render(area, buf),
         }
     }
 }

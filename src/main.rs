@@ -6,7 +6,7 @@ use std::{
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::Discord;
-use interface::{run_ui, setup::SetupView, View};
+use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
 use state::Config;
 
 use crate::audio::AudioSystem;
@@ -41,7 +41,7 @@ impl App {
                 action_sender,
                 action_receiver,
                 config: Some(config).into(),
-                current_view: View::Dashboard.into(),
+                current_view: View::Dashboard(DashboardView).into(),
             };
         }
 
