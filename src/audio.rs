@@ -177,7 +177,7 @@ fn run_check_thread(audio: Arc<AudioSystem>) {
                     let mut line = String::new();
                     reader.read_line(&mut line).expect("Read line");
 
-                    eprint!("{}", line);
+                    // eprint!("{}", line);
 
                     // Parec connected or moved to the wrong device, or timed out
                     if line.contains(STREAM_CONNECTED_MESSAGE) && !line.contains(&device)
