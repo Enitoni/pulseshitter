@@ -256,6 +256,7 @@ fn run_respawn_thread(audio: Arc<AudioSystem>) {
 
         if stream_cleared {
             loop {
+                thread::sleep(Duration::from_millis(100));
                 audio.pulse.update_applications();
 
                 let apps = {
