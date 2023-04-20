@@ -158,7 +158,7 @@ impl Parec {
     fn new(device: String, app: Application) -> Result<Self, String> {
         let mut child = Command::new("parec")
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            //.stderr(Stdio::piped())
             .arg("--verbose")
             .arg("--device")
             .arg(device)
@@ -173,11 +173,11 @@ impl Parec {
             .map_err(|err| format!("Could not spawn Parec instance: {}", err))?;
 
         let stdout = child.stdout.take().expect("Take stdout from child");
-        let stderr = child.stderr.take().expect("Take stderr from child");
+        //let stderr = child.stderr.take().expect("Take stderr from child");
 
         Ok(Self {
             child: child.into(),
-            stderr: Some(stderr),
+            stderr: None,
             stdout,
         })
     }
