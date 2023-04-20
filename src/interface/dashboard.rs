@@ -40,17 +40,24 @@ impl Widget for &DashboardView {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(area.width - 34), Constraint::Length(32)])
-            .horizontal_margin(4)
             .split(area);
+
+        let sidebar_area = chunks[1];
+        let sidebar_area = tui::layout::Rect::new(
+            sidebar_area.x + 1,
+            sidebar_area.y,
+            sidebar_area.width - 1,
+            sidebar_area.height,
+        );
 
         let sidebar_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(6), Constraint::Percentage(100)])
             .margin(1)
-            .split(chunks[1]);
+            .split(sidebar_area);
 
         self.app_selector.render(chunks[0], buf);
-        self.audio_module.render(chunks[1], buf);
+        self.audio_module.render(sidebar_chunks[0], buf);
     }
 }
 
