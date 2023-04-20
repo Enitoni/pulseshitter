@@ -132,7 +132,7 @@ impl AudioStream {
 impl Read for AudioStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut consumer = self.0.lock().unwrap();
-        let _ = consumer.read(buf);
+        let _ = consumer.read_exact(buf);
 
         Ok(buf.len())
     }
