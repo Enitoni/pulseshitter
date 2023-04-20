@@ -4,7 +4,7 @@ use crossbeam::channel::Sender;
 use crossterm::event::{Event, KeyCode};
 use tui::{
     style::{Color, Style},
-    widgets::{Paragraph, Widget},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
 
 use crate::{audio::SelectedApp, pulse::PulseAudio, Action};
@@ -53,10 +53,17 @@ impl Widget for &AppSelector {
         self.pulse.update_applications();
         let apps = self.pulse.applications();
 
+        let block = Block::default()
+            .title("Applications")
+            .borders(Borders::all());
+        let block_inner = block.inner(area);
+
+        block.render(area, buf);
+
         let selected_index = self.selected_index.lock().unwrap();
         let selected_app = self.selected_app.lock().unwrap();
 
-        let top = area.top();
+        let top = block_inner.top();
 
         for (index, app) in apps.iter().enumerate() {
             let is_over = *selected_index == index;
@@ -66,8 +73,12 @@ impl Widget for &AppSelector {
                 .map(|f| f.sink_input_index == app.sink_input_index)
                 .unwrap_or_default();
 
-            let paragraph_area =
-                tui::layout::Rect::new(area.left(), top + index as u16, area.width, 1);
+            let paragraph_area = tui::layout::Rect::new(
+                block_inner.left(),
+                top + index as u16,
+                block_inner.width,
+                1,
+            );
 
             let symbol = if is_active {
                 ACTIVE_SYMBOL
