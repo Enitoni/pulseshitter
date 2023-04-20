@@ -23,6 +23,7 @@ use tui::{
 
 mod app_selector;
 mod audio_module;
+mod discord_module;
 mod field;
 
 pub mod dashboard;
