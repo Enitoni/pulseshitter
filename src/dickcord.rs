@@ -34,6 +34,14 @@ impl Discord {
         *(self.status.lock().unwrap()) = DiscordStatus::Connecting;
         *client = DroppableClient::new(audio_stream, self.status.clone(), actions, config).into();
     }
+
+    pub fn disconnect(&self) {
+        let mut client = self.client.lock().unwrap();
+        let mut status = self.status.lock().unwrap();
+
+        *client = None;
+        *status = DiscordStatus::Idle;
+    }
 }
 
 #[derive(Default)]
