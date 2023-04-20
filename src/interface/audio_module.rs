@@ -32,7 +32,7 @@ impl Widget for &AudioModule {
             tui::layout::Rect::new(
                 area.left() + 2,
                 area.top() + 1,
-                area.width - 2,
+                area.width - 3,
                 area.height - 1,
             )
         };
@@ -72,10 +72,10 @@ impl Widget for &AudioModule {
             .style(Style::default().fg(status_color));
 
         let info_lines = vec![
-            Spans::from(Span::styled("Device", Style::default().fg(Color::Gray))),
+            Spans::from(Span::styled("Device:", Style::default().fg(Color::Gray))),
             Spans::from(Span::raw(self.pulse.device_name())),
             Spans::default(),
-            Spans::from(Span::styled("Latency", Style::default().fg(Color::Gray))),
+            Spans::from(Span::styled("Latency:", Style::default().fg(Color::Gray))),
             Spans::from(Span::raw("0ms")),
         ];
 
