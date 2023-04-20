@@ -105,7 +105,7 @@ impl Widget for &SetupView {
 
         let status_text = match *(self.status.lock().unwrap()) {
             DiscordStatus::Idle => {
-                "Press enter to connect when you're done. Press tab to switch between fields."
+                "Press tab to switch between fields. Press enter to connect when you're done."
             }
             DiscordStatus::Connecting => "Connecting...",
             DiscordStatus::Connected => "Connected!",
