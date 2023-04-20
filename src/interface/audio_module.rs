@@ -29,9 +29,6 @@ impl Widget for &AudioModule {
             )
         };
 
-        dbg!(&block_inner, &area);
-        block.render(area, buf);
-
         let status = self.status.lock().unwrap();
 
         let status_text = match &*status {
@@ -57,7 +54,8 @@ impl Widget for &AudioModule {
         };
 
         let paragraph = Paragraph::new(format!("{}  {}", status_symbol, status_text))
-            .style(Style::default().fg(status_color));
+            .style(Style::default().fg(status_color))
+            .block(block);
 
         paragraph.render(block_inner, buf);
     }
