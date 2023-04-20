@@ -71,14 +71,14 @@ impl Widget for &DiscordModule {
         }
 
         if let DiscordStatus::Joining(channel) = &*status {
-            let paragraph = Paragraph::new(format!("└ Joining {}...", channel.name()))
+            let paragraph = Paragraph::new(format!("└─ Joining {}...", channel.name()))
                 .style(Style::default().fg(Color::Yellow));
 
             paragraph.render(chunks[1], buf);
         }
 
         if let DiscordStatus::Active(channel) = &*status {
-            let paragraph = Paragraph::new(format!("└ In {}", channel.name()))
+            let paragraph = Paragraph::new(format!("└─ In {}", channel.name()))
                 .style(Style::default().fg(Color::Green));
 
             paragraph.render(chunks[1], buf);
