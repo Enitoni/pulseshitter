@@ -7,12 +7,18 @@ use tui::{
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::{audio::SelectedApp, pulse::PulseAudio, Action};
+use crate::{
+    audio::SelectedApp,
+    dickcord::{CurrentDiscordStatus, DiscordStatus},
+    pulse::PulseAudio,
+    Action,
+};
 
 use super::ViewController;
 
 pub struct AppSelector {
     pulse: Arc<PulseAudio>,
+    discord_status: CurrentDiscordStatus,
     actions: Sender<Action>,
 
     selected_app: SelectedApp,
@@ -20,11 +26,17 @@ pub struct AppSelector {
 }
 
 impl AppSelector {
-    pub fn new(pulse: Arc<PulseAudio>, selected_app: SelectedApp, actions: Sender<Action>) -> Self {
+    pub fn new(
+        pulse: Arc<PulseAudio>,
+        discord_status: CurrentDiscordStatus,
+        selected_app: SelectedApp,
+        actions: Sender<Action>,
+    ) -> Self {
         Self {
             pulse,
             actions,
             selected_app,
+            discord_status,
             selected_index: Default::default(),
         }
     }
@@ -68,6 +80,9 @@ impl Widget for &AppSelector {
         let selected_index = self.selected_index.lock().unwrap();
         let selected_app = self.selected_app.lock().unwrap();
 
+        let discord_status = self.discord_status.lock().unwrap();
+        let is_discord_ready = matches!(*discord_status, DiscordStatus::Active(_));
+
         let top = block_inner.top();
 
         for (index, app) in apps.iter().enumerate() {
@@ -85,7 +100,9 @@ impl Widget for &AppSelector {
                 1,
             );
 
-            let symbol = if is_active {
+            let symbol = if !is_discord_ready {
+                IDLE_SYMBOL
+            } else if is_active {
                 ACTIVE_SYMBOL
             } else if is_over {
                 HOVER_SYMBOL
@@ -93,7 +110,13 @@ impl Widget for &AppSelector {
                 IDLE_SYMBOL
             };
 
-            let color = if is_active { ACTIVE_COLOR } else { IDLE_COLOR };
+            let color = if !is_discord_ready {
+                DISABLE_COLOR
+            } else if is_active {
+                ACTIVE_COLOR
+            } else {
+                IDLE_COLOR
+            };
 
             let paragraph = Paragraph::new(format!("{} {}", symbol, app.name.clone()))
                 .style(Style::default().fg(color));
@@ -105,6 +128,15 @@ impl Widget for &AppSelector {
 
 impl ViewController for AppSelector {
     fn handle_event(&mut self, event: crossterm::event::Event) {
+        {
+            let discord_status = self.discord_status.lock().unwrap();
+
+            // Prevent selecting app before discord connects
+            if !matches!(*discord_status, DiscordStatus::Active(_)) {
+                return;
+            }
+        }
+
         if let Event::Key(key) = event {
             match key.code {
                 KeyCode::Up => self.navigate(-1),
@@ -122,3 +154,4 @@ const ACTIVE_SYMBOL: &str = "►";
 
 const ACTIVE_COLOR: Color = Color::Green;
 const IDLE_COLOR: Color = Color::Reset;
+const DISABLE_COLOR: Color = Color::DarkGray;
