@@ -39,7 +39,7 @@ impl Widget for &DashboardView {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(area.width - 64), Constraint::Length(64)])
+            .constraints([Constraint::Length(area.width - 65), Constraint::Length(64)])
             .margin(1)
             .split(area);
 
