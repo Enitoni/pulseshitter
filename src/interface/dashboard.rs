@@ -53,7 +53,6 @@ impl Widget for &DashboardView {
         let sidebar_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(6), Constraint::Percentage(100)])
-            .margin(1)
             .split(sidebar_area);
 
         self.app_selector.render(chunks[0], buf);
