@@ -304,7 +304,7 @@ fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> String {
     let mut c = [0; 1];
 
     loop {
-        buffer.read_exact(&mut c).unwrap();
+        let _ = buffer.read_exact(&mut c);
 
         match c {
             [13] | [10] => break,
