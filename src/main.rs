@@ -5,7 +5,12 @@ use std::{
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::Discord;
-use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
+use interface::{
+    dashboard::{DashboardView, DashboardViewContext},
+    run_ui,
+    setup::SetupView,
+    View,
+};
 use pulse::{Application, PulseAudio};
 use state::Config;
 
@@ -44,11 +49,14 @@ impl App {
         if let Some(config) = config {
             discord.connect(audio.stream(), config.clone(), action_sender.clone());
 
-            let dashboard_view = DashboardView::new(
-                pulse.clone(),
-                audio.selected_app.clone(),
-                action_sender.clone(),
-            );
+            let dashboard_context = DashboardViewContext {
+                pulse: pulse.clone(),
+                actions: action_sender.clone(),
+                audio_status: audio.status.clone(),
+                selected_app: audio.selected_app.clone(),
+            };
+
+            let dashboard_view = DashboardView::new(dashboard_context);
 
             return Self {
                 audio,
@@ -98,11 +106,14 @@ impl App {
 
                 let mut view = self.current_view.lock().unwrap();
 
-                let dashboard_view = DashboardView::new(
-                    self.pulse.clone(),
-                    self.audio.selected_app.clone(),
-                    self.action_sender.clone(),
-                );
+                let dashboard_context = DashboardViewContext {
+                    pulse: self.pulse.clone(),
+                    actions: self.action_sender.clone(),
+                    audio_status: self.audio.status.clone(),
+                    selected_app: self.audio.selected_app.clone(),
+                };
+
+                let dashboard_view = DashboardView::new(dashboard_context);
 
                 *view = View::Dashboard(dashboard_view);
             }

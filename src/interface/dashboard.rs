@@ -6,18 +6,31 @@ use tui::{
     widgets::Widget,
 };
 
-use crate::{audio::SelectedApp, pulse::PulseAudio, Action};
+use crate::{
+    audio::{CurrentAudioStatus, SelectedApp},
+    pulse::PulseAudio,
+    Action,
+};
 
-use super::{app_selector::AppSelector, ViewController};
+use super::{app_selector::AppSelector, audio_module::AudioModule, ViewController};
 
 pub struct DashboardView {
     app_selector: AppSelector,
+    audio_module: AudioModule,
+}
+
+pub struct DashboardViewContext {
+    pub pulse: Arc<PulseAudio>,
+    pub selected_app: SelectedApp,
+    pub actions: Sender<Action>,
+    pub audio_status: CurrentAudioStatus,
 }
 
 impl DashboardView {
-    pub fn new(pulse: Arc<PulseAudio>, selected_app: SelectedApp, actions: Sender<Action>) -> Self {
+    pub fn new(context: DashboardViewContext) -> Self {
         Self {
-            app_selector: AppSelector::new(pulse, selected_app, actions),
+            app_selector: AppSelector::new(context.pulse, context.selected_app, context.actions),
+            audio_module: AudioModule::new(context.audio_status),
         }
     }
 }
@@ -30,7 +43,14 @@ impl Widget for &DashboardView {
             .margin(1)
             .split(area);
 
-        self.app_selector.render(chunks[0], buf)
+        let sidebar_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(6), Constraint::Percentage(100)])
+            .margin(1)
+            .split(chunks[1]);
+
+        self.app_selector.render(chunks[0], buf);
+        self.audio_module.render(sidebar_chunks[0], buf);
     }
 }
 
