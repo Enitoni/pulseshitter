@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use tui::{
+    layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, Paragraph, Widget},
+    text::{Span, Spans, Text},
+    widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
 use crate::{
@@ -23,9 +25,7 @@ impl AudioModule {
 
 impl Widget for &AudioModule {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        let block = Block::default()
-            .title(format!("─ Audio ({}) ", self.pulse.device_name()))
-            .borders(Borders::all());
+        let block = Block::default().title("─ Audio ").borders(Borders::all());
 
         let block_inner = {
             let area = block.inner(area);
@@ -39,6 +39,11 @@ impl Widget for &AudioModule {
 
         block.render(area, buf);
 
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(2), Constraint::Percentage(100)])
+            .split(block_inner);
+
         let status = self.status.lock().unwrap();
 
         let status_text = match &*status {
@@ -51,7 +56,7 @@ impl Widget for &AudioModule {
 
         let status_symbol = match &*status {
             AudioStatus::Connecting(_) | AudioStatus::Searching(_) => "⭮",
-            AudioStatus::Connected(_) => "✔",
+            AudioStatus::Connected(_) => "►",
             AudioStatus::Failed(_) => "⚠",
             _ => "○",
         };
@@ -63,9 +68,18 @@ impl Widget for &AudioModule {
             _ => Color::Reset,
         };
 
-        let paragraph = Paragraph::new(format!("{}  {}", status_symbol, status_text))
+        let status_paragraph = Paragraph::new(format!("{}  {}", status_symbol, status_text))
             .style(Style::default().fg(status_color));
 
-        paragraph.render(block_inner, buf);
+        let info_paragraph = Paragraph::new(Spans::from(vec![
+            Span::styled("Device\n", Style::default().fg(Color::Gray)),
+            Span::raw(self.pulse.device_name()),
+            Span::styled("\n\nLatency", Style::default().fg(Color::Gray)),
+            Span::raw("0ms"),
+        ]))
+        .wrap(Wrap { trim: false });
+
+        status_paragraph.render(chunks[0], buf);
+        info_paragraph.render(chunks[1], buf);
     }
 }
