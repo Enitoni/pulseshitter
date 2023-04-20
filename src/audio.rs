@@ -141,10 +141,8 @@ impl Read for AudioStream {
             }
 
             read += consumer.read(&mut buf[read..]).unwrap_or_default();
-            thread::sleep(Duration::from_millis(5));
+            thread::sleep(Duration::from_millis(1));
         }
-
-        dbg!("reading");
 
         Ok(buf.len())
     }
