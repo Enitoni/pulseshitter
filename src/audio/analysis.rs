@@ -12,7 +12,7 @@ pub struct Meter {
 
 impl Meter {
     const DEFAULT_WINDOW_SIZE: usize = SAMPLE_RATE / 4;
-    const DB_RANGE: f32 = 60.;
+    const DB_RANGE: f32 = 40.;
 
     pub fn new() -> Self {
         Self {
@@ -35,7 +35,7 @@ impl Meter {
             buffer.drain(overflow..);
         }
 
-        let max_value = buffer.iter().fold(0f32, |acc, x| acc.max(*x));
+        let max_value = buffer.iter().fold(0f32, |acc, x| acc.max((*x).abs()));
         self.current_value.store(max_value);
     }
 
@@ -83,5 +83,11 @@ impl StereoMeter {
 
     pub fn value_ranged(&self) -> (f32, f32) {
         (self.left.value_ranged(), self.right.value_ranged())
+    }
+}
+
+impl Default for StereoMeter {
+    fn default() -> Self {
+        Self::new()
     }
 }
