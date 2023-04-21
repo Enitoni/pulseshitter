@@ -100,13 +100,7 @@ impl App {
                 *config = Some(new_config);
             }
             Action::Activate => {
-                let time = Instant::now();
-                eprintln!("Unlocking config mutex...");
-
                 let config = self.config.lock().unwrap();
-
-                eprintln!("Unlocked in {}ms. Saving...", time.elapsed().as_millis());
-                let time = Instant::now();
 
                 // We save because the config allowed a connection
                 config
@@ -114,14 +108,7 @@ impl App {
                     .expect("Cannot activate without config")
                     .save();
 
-                eprintln!(
-                    "Saved in {}ms. Unlocking current_view mutex...",
-                    time.elapsed().as_millis()
-                );
-                let time = Instant::now();
-
                 let mut view = self.current_view.lock().unwrap();
-                eprintln!("Unlocked in {}ms.", time.elapsed().as_millis());
 
                 let dashboard_context = DashboardViewContext {
                     pulse: self.pulse.clone(),

@@ -41,40 +41,38 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
     let events = run_event_loop();
 
     loop {
-        let mut view = app.current_view.lock().unwrap();
+        {
+            let mut view = app.current_view.lock().unwrap();
 
-        let draw_result = terminal.draw(|f| {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(4), Constraint::Percentage(100)])
-                .horizontal_margin(1)
-                .split(f.size());
+            let draw_result = terminal.draw(|f| {
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(4), Constraint::Percentage(100)])
+                    .horizontal_margin(1)
+                    .split(f.size());
 
-            let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
+                let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
 
-            f.render_widget(logo, chunks[0]);
-            f.render_widget(&*view, chunks[1]);
-        });
+                f.render_widget(logo, chunks[0]);
+                f.render_widget(&*view, chunks[1]);
+            });
 
-        if let Err(err) = draw_result {
-            eprintln!("Failed to draw: {:?}", err);
-            break;
-        };
+            if let Err(err) = draw_result {
+                eprintln!("Failed to draw: {:?}", err);
+                break;
+            };
 
-        if let Ok(event) = events.try_recv() {
-            if let Event::Key(key) = &event {
-                if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
-                    app.action_sender.send(Action::Exit).unwrap();
-
-                    // Allow cleanup
-                    thread::sleep(Duration::from_millis(200));
-
-                    break;
+            if let Ok(event) = events.try_recv() {
+                if let Event::Key(key) = &event {
+                    if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
+                        app.action_sender.send(Action::Exit).unwrap();
+                        break;
+                    }
                 }
-            }
 
-            view.handle_event(event);
-        };
+                view.handle_event(event);
+            };
+        }
 
         thread::sleep(Duration::from_secs_f32(FPS / 1000.));
     }
