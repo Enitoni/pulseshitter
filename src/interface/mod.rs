@@ -17,7 +17,7 @@ use std::{
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
-    widgets::{Paragraph, Widget},
+    widgets::{Paragraph, Widget, Wrap},
     Terminal,
 };
 
@@ -45,11 +45,24 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
             let mut view = app.current_view.lock().unwrap();
 
             let draw_result = terminal.draw(|f| {
+                let size = f.size();
+
+                let is_big_enough = size.width >= 70 && size.height >= 22;
+
+                if !is_big_enough {
+                    let notice = Paragraph::new("Please resize your terminal window.")
+                        .wrap(Wrap { trim: false });
+
+                    f.render_widget(notice, size);
+
+                    return;
+                }
+
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(4), Constraint::Percentage(100)])
                     .horizontal_margin(1)
-                    .split(f.size());
+                    .split(size);
 
                 let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
 

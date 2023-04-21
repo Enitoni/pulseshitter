@@ -53,14 +53,17 @@ impl Widget for &DashboardView {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(area.width - 38), Constraint::Length(38)])
+            .constraints([
+                Constraint::Length(area.width.saturating_sub(38)),
+                Constraint::Length(38),
+            ])
             .split(area);
 
         let sidebar_area = chunks[1];
         let sidebar_area = tui::layout::Rect::new(
             sidebar_area.x + 1,
             sidebar_area.y,
-            sidebar_area.width - 1,
+            sidebar_area.width.saturating_sub(1),
             sidebar_area.height,
         );
 
@@ -68,7 +71,7 @@ impl Widget for &DashboardView {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(6),
-                Constraint::Length(sidebar_area.height - 7),
+                Constraint::Length(sidebar_area.height.saturating_sub(7)),
             ])
             .split(sidebar_area);
 

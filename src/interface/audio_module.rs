@@ -40,8 +40,8 @@ impl Widget for &AudioModule {
             tui::layout::Rect::new(
                 area.left() + 2,
                 area.top() + 1,
-                area.width - 3,
-                area.height - 1,
+                area.width.saturating_sub(3),
+                area.height.saturating_sub(1),
             )
         };
 
