@@ -18,6 +18,8 @@ pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
 pub type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;
 pub type CurrentAudioStatus = Arc<Mutex<AudioStatus>>;
 pub type SelectedApp = Arc<Mutex<Option<Application>>>;
+
+pub type AudioTime = Arc<AtomicCell<f32>>;
 pub type AudioLatency = Arc<AtomicCell<u32>>;
 
 const BUFFER_SIZE: usize = 4068;
@@ -26,7 +28,9 @@ const BUFFER_SIZE: usize = 4068;
 pub struct AudioSystem {
     pub selected_app: SelectedApp,
     pub status: CurrentAudioStatus,
+
     pub latency: AudioLatency,
+    pub time: AudioTime,
 
     pulse: Arc<PulseAudio>,
     child: Arc<AtomicCell<Option<Child>>>,
@@ -68,6 +72,8 @@ impl AudioSystem {
             status: Default::default(),
 
             latency: Default::default(),
+            time: Default::default(),
+
             selected_app: Default::default(),
 
             sender,
@@ -215,7 +221,8 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                             sender.send(AudioMessage::Clear).unwrap();
                         }
 
-                        if let ParecEvent::Time(_, latency) = event {
+                        if let ParecEvent::Time(time, latency) = event {
+                            audio.time.store(time);
                             audio.latency.store(latency);
                         }
 
