@@ -124,6 +124,7 @@ impl App {
                 let dashboard_view = DashboardView::new(dashboard_context);
                 *view = View::Dashboard(dashboard_view);
             }
+            Action::StopStream => self.audio.clear(),
             Action::SetApplication(app) => self.audio.set_application(app),
             Action::Exit => self.discord.disconnect(),
         };
@@ -133,6 +134,7 @@ impl App {
 pub enum Action {
     SetConfig(Config),
     SetApplication(Application),
+    StopStream,
     Activate,
     Exit,
 }

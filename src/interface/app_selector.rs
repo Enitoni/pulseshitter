@@ -50,9 +50,22 @@ impl AppSelector {
     }
 
     pub fn select(&self) {
+        let selected_app = self.selected_app.lock().unwrap();
         let selected_index = self.selected_index.lock().unwrap();
 
         if let Some(app) = self.pulse.applications().get(*selected_index) {
+            let selected_app_index = selected_app
+                .as_ref()
+                .map(|a| a.sink_input_index)
+                .unwrap_or_default();
+
+            // Stop the stream if pressing play on the same one
+            if app.sink_input_index == selected_app_index {
+                self.actions.send(Action::StopStream).unwrap();
+
+                return;
+            }
+
             self.actions
                 .send(Action::SetApplication(app.to_owned()))
                 .unwrap();
