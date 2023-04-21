@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use tui::{
@@ -98,13 +99,13 @@ impl Widget for &AudioModule {
             Spans::from(Span::raw(self.pulse.device_name())),
             Spans::default(),
             Spans::from(Span::styled(
-                "Latency:            Time:",
+                "Latency:         Time elapsed:",
                 Style::default().fg(Color::Gray),
             )),
             Spans::from(Span::raw(format!(
-                "{:.3}ms             {:.3} sec",
+                "{:.3}ms          {}",
                 self.latency.load() as f32 / 1000.,
-                self.time.load()
+                format_seconds(self.time.load()),
             ))),
         ];
 
@@ -113,4 +114,29 @@ impl Widget for &AudioModule {
         status_paragraph.render(chunks[0], buf);
         info_paragraph.render(chunks[1], buf);
     }
+}
+
+fn format_seconds(seconds: f32) -> String {
+    let mut result = String::new();
+
+    let seconds = seconds.floor() as u32;
+    let minutes = seconds / 60;
+    let hours = minutes / 60;
+
+    let mut minute_padding = 0;
+
+    if hours >= 1 {
+        let _ = write!(&mut result, "{:0}:", hours);
+        minute_padding = 2;
+    }
+
+    let _ = write!(
+        &mut result,
+        "{:0mw$}:{:02}",
+        minutes % 60,
+        seconds % 60,
+        mw = minute_padding
+    );
+
+    result
 }
