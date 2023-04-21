@@ -79,7 +79,7 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
             let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
 
             let footer_style = Style::default().fg(Color::DarkGray);
-            let copyright = Paragraph::new("Copyright © 2023 Enitoni, All rights reserved.")
+            let copyright = Paragraph::new("© 2023 Enitoni, Some rights reserved.")
                 .alignment(Alignment::Left)
                 .style(footer_style);
 
