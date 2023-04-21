@@ -16,7 +16,8 @@ use std::{
 };
 use tui::{
     backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Style},
     widgets::{Paragraph, Widget, Wrap},
     Terminal,
 };
@@ -47,29 +48,55 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
         let mut view = app.current_view.lock().unwrap();
 
         let draw_result = terminal.draw(|f| {
-            let size = f.size();
+            let area = f.size();
 
-            let is_big_enough = size.width >= 70 && size.height >= 22;
-
+            let is_big_enough = area.width >= 70 && area.height >= 22;
             if !is_big_enough {
-                let notice = Paragraph::new("Please resize your terminal window.")
+                let text = "Please resize your terminal window.";
+
+                let centered_y = area.height / 2;
+                let centered_area =
+                    Rect::new(area.x, centered_y, area.width, area.height - centered_y);
+
+                let notice = Paragraph::new(text)
+                    .alignment(Alignment::Center)
                     .wrap(Wrap { trim: false });
 
-                f.render_widget(notice, size);
-
+                f.render_widget(notice, centered_area);
                 return;
             }
 
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(4), Constraint::Percentage(100)])
+                .constraints([
+                    Constraint::Length(4),
+                    Constraint::Length(area.height.saturating_sub(4 + 2)),
+                    Constraint::Length(2),
+                ])
                 .horizontal_margin(1)
-                .split(size);
+                .split(area);
 
             let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
 
+            let footer_style = Style::default().fg(Color::DarkGray);
+            let copyright = Paragraph::new("Copyright © 2023 Enitoni, All rights reserved.")
+                .alignment(Alignment::Left)
+                .style(footer_style);
+
+            let version = Paragraph::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                .alignment(Alignment::Right)
+                .style(footer_style);
+
+            let footer_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .horizontal_margin(1)
+                .split(chunks[2]);
+
             f.render_widget(logo, chunks[0]);
             f.render_widget(&*view, chunks[1]);
+            f.render_widget(copyright, footer_chunks[0]);
+            f.render_widget(version, footer_chunks[1]);
         });
 
         if let Err(err) = draw_result {
@@ -89,7 +116,9 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
         }
 
         let elapsed = frame_now.elapsed().as_secs_f32();
-        let sleep_duration = Duration::from_secs_f32((MS_PER_FRAME / 1000.) - elapsed);
+        let remainder = (MS_PER_FRAME / 1000.) - elapsed;
+
+        let sleep_duration = Duration::from_secs_f32(remainder.max(0.));
 
         drop(view);
         thread::sleep(sleep_duration);
