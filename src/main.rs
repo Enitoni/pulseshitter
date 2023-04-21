@@ -1,6 +1,7 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
+    time::Instant,
 };
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
@@ -99,21 +100,28 @@ impl App {
                 *config = Some(new_config);
             }
             Action::Activate => {
-                // Save file on different thread to avoid blocking
-                thread::spawn({
-                    let config = self.config.clone();
+                let time = Instant::now();
+                eprintln!("Unlocking config mutex...");
 
-                    move || {
-                        let config = config.lock().unwrap();
+                let config = self.config.lock().unwrap();
 
-                        config
-                            .as_ref()
-                            .expect("Cannot activate without config")
-                            .save();
-                    }
-                });
+                eprintln!("Unlocked in {}ms. Saving...", time.elapsed().as_millis());
+                let time = Instant::now();
+
+                // We save because the config allowed a connection
+                config
+                    .as_ref()
+                    .expect("Cannot activate without config")
+                    .save();
+
+                eprintln!(
+                    "Saved in {}ms. Unlocking current_view mutex...",
+                    time.elapsed().as_millis()
+                );
+                let time = Instant::now();
 
                 let mut view = self.current_view.lock().unwrap();
+                eprintln!("Unlocked in {}ms.", time.elapsed().as_millis());
 
                 let dashboard_context = DashboardViewContext {
                     pulse: self.pulse.clone(),
