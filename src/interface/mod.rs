@@ -21,6 +21,7 @@ use tui::{
     Terminal,
 };
 
+mod animation;
 mod app_selector;
 mod audio_module;
 mod discord_module;
@@ -88,7 +89,7 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
         }
 
         let elapsed = frame_now.elapsed().as_secs_f32();
-        let sleep_duration = Duration::from_secs_f32((FPS / 1000.) - elapsed);
+        let sleep_duration = Duration::from_secs_f32((MS_PER_FRAME / 1000.) - elapsed);
 
         drop(view);
         thread::sleep(sleep_duration);
@@ -157,4 +158,5 @@ const LOGO: &str = "
 █▀▀ █▄█ █▄▄ ▄█ ██▄ ▄█ █▀█ █ ░█░ ░█░ ██▄ █▀▄
 ";
 
-const FPS: f32 = 1000. / 60.;
+pub const TARGET_FPS: u32 = 60;
+pub const MS_PER_FRAME: f32 = 1000. / TARGET_FPS as f32;
