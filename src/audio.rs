@@ -123,6 +123,17 @@ impl AudioSystem {
         });
     }
 
+    pub fn clear(&self) {
+        *(self.status.lock().unwrap()) = AudioStatus::Idle;
+        *(self.selected_app.lock().unwrap()) = None;
+
+        if let Some(child) = self.child.lock().unwrap().as_mut() {
+            child.kill().expect("Kill child");
+        }
+
+        self.sender.send(AudioMessage::Clear).unwrap();
+    }
+
     pub fn stream(&self) -> AudioStream {
         AudioStream(self.audio_consumer.clone())
     }
