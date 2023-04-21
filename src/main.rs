@@ -23,7 +23,7 @@ mod pulse;
 mod state;
 
 pub struct App {
-    config: Mutex<Option<Config>>,
+    config: Arc<Mutex<Option<Config>>>,
 
     pulse: Arc<PulseAudio>,
     audio: Arc<AudioSystem>,
@@ -67,7 +67,7 @@ impl App {
                 discord,
                 action_sender,
                 action_receiver,
-                config: Some(config).into(),
+                config: Mutex::new(Some(config)).into(),
                 current_view: View::Dashboard(dashboard_view).into(),
             };
         }
@@ -77,7 +77,7 @@ impl App {
         // New setup
         Self {
             current_view: View::Setup(setup_view).into(),
-            config: Config::restore().into(),
+            config: Mutex::new(Config::restore()).into(),
             action_receiver,
             action_sender,
             discord,
@@ -99,16 +99,19 @@ impl App {
                 *config = Some(new_config);
             }
             Action::Activate => {
-                dbg!("activating...");
-                let config = self.config.lock().unwrap();
+                // Save file on different thread to avoid blocking
+                thread::spawn({
+                    let config = self.config.clone();
 
-                // We save because the config allowed a connection
-                config
-                    .as_ref()
-                    .expect("Cannot activate without config")
-                    .save();
+                    move || {
+                        let config = config.lock().unwrap();
 
-                dbg!("activated...");
+                        config
+                            .as_ref()
+                            .expect("Cannot activate without config")
+                            .save();
+                    }
+                });
 
                 let mut view = self.current_view.lock().unwrap();
 
@@ -122,9 +125,7 @@ impl App {
                     latency: self.audio.latency.clone(),
                 };
 
-                dbg!("saved...");
                 let dashboard_view = DashboardView::new(dashboard_context);
-
                 *view = View::Dashboard(dashboard_view);
             }
             Action::SetApplication(app) => self.audio.set_application(app),
