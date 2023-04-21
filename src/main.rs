@@ -57,6 +57,7 @@ impl App {
                 discord_user: discord.current_user.clone(),
                 selected_app: audio.selected_app.clone(),
                 latency: audio.latency.clone(),
+                time: audio.time.clone(),
             };
 
             let dashboard_view = DashboardView::new(dashboard_context);
@@ -117,6 +118,7 @@ impl App {
                     selected_app: self.audio.selected_app.clone(),
                     discord_user: self.discord.current_user.clone(),
                     latency: self.audio.latency.clone(),
+                    time: self.audio.time.clone(),
                 };
 
                 let dashboard_view = DashboardView::new(dashboard_context);
