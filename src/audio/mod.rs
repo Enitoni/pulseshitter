@@ -1,8 +1,11 @@
+use crate::pulse::{Application, PulseAudio};
 use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use lazy_static::lazy_static;
 use regex::Regex;
 use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
+use songbird::input::reader::MediaSource;
+use songbird::input::{Codec, Container, Input, Reader};
 use std::fmt::Display;
 use std::io::{BufReader, Read, Seek};
 use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
@@ -10,8 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use songbird::input::reader::MediaSource;
-use songbird::input::{Codec, Container, Input, Reader};
+use self::analysis::StereoMeter;
 
 mod analysis;
 
@@ -22,6 +24,11 @@ pub type SelectedApp = Arc<Mutex<Option<Application>>>;
 
 pub type AudioTime = Arc<AtomicCell<f32>>;
 pub type AudioLatency = Arc<AtomicCell<u32>>;
+
+pub type Sample = f32;
+
+pub const SAMPLE_RATE: usize = 48000;
+pub const SAMPLE_IN_BYTES: usize = 4;
 
 const BUFFER_SIZE: usize = 4068;
 
@@ -41,6 +48,8 @@ pub struct AudioSystem {
 
     audio_producer: AudioProducer,
     audio_consumer: AudioConsumer,
+
+    meter: Arc<StereoMeter>,
 }
 
 #[derive(Default)]
@@ -99,6 +108,8 @@ impl AudioSystem {
 
             audio_producer: Mutex::from(audio_producer).into(),
             audio_consumer: Mutex::from(audio_consumer).into(),
+
+            meter: StereoMeter::new().into(),
         }
     }
 
@@ -235,6 +246,7 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
             let producer = audio.audio_producer.clone();
             let status = audio.status.clone();
             let pulse = audio.pulse.clone();
+            let meter = audio.meter.clone();
 
             // Update applications periodically
             thread::Builder::new()
@@ -314,7 +326,12 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                     let mut buf = [0; BUFFER_SIZE];
 
                     let read = stdout.read(&mut buf).unwrap_or_default();
-                    producer.push_slice(&buf[..read]);
+                    let new_bytes = &buf[..read];
+
+                    producer.push_slice(new_bytes);
+
+                    let samples = raw_samples_from_bytes(new_bytes);
+                    meter.process(&samples);
                 }
 
                 thread::sleep(Duration::from_millis(1));
@@ -398,4 +415,15 @@ fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> Option<String>
     }
 
     Some(line)
+}
+
+/// Converts a slice of bytes into a vec of [Sample].
+pub fn raw_samples_from_bytes(bytes: &[u8]) -> Vec<Sample> {
+    bytes
+        .chunks_exact(SAMPLE_IN_BYTES)
+        .map(|b| {
+            let arr: [u8; SAMPLE_IN_BYTES] = [b[0], b[1], b[2], b[3]];
+            Sample::from_le_bytes(arr)
+        })
+        .collect()
 }
