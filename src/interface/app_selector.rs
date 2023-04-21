@@ -67,6 +67,7 @@ impl Widget for &AppSelector {
 
         let block = Block::default()
             .title("─ Applications ")
+            .border_style(Style::default().fg(Color::DarkGray))
             .borders(Borders::all());
 
         // Add margins
