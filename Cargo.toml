@@ -1,6 +1,6 @@
 [package]
 name = "pulseshitter"
-version = "1.0.1"
+version = "2.0.0"
 edition = "2021"
 
 [profile.profiling]
@@ -24,3 +24,4 @@ crossterm = "0.25"
 enum-iterator = "1.4.0"
 regex = "1.7.3"
 lazy_static = "1.4.0"
+parking_lot = "0.12.1"
