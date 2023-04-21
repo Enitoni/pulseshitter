@@ -103,10 +103,10 @@ impl Widget for &AppSelector {
 
             let symbol = if !is_discord_ready {
                 IDLE_SYMBOL
-            } else if is_active {
-                ACTIVE_SYMBOL
             } else if is_over {
                 HOVER_SYMBOL
+            } else if is_active {
+                ACTIVE_SYMBOL
             } else {
                 IDLE_SYMBOL
             };
