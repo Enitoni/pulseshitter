@@ -3,7 +3,7 @@ use crossbeam::channel::{unbounded, Receiver, Sender};
 use lazy_static::lazy_static;
 use regex::Regex;
 use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
-use std::io::{BufRead, BufReader, Read, Seek};
+use std::io::{BufReader, Read, Seek};
 use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -52,8 +52,8 @@ pub enum AudioMessage {
     /// Sent when a parec process has spawned
     StreamSpawned(ChildStdout, ChildStderr),
 
-    /// Sent when a new parec stream must be opened
-    StreamApplication(Application),
+    /// Stop streaming
+    Clear,
 }
 
 impl AudioSystem {
@@ -164,41 +164,6 @@ impl MediaSource for AudioStream {
     }
 }
 
-struct Parec {
-    child: Mutex<Child>,
-    stdout: ChildStdout,
-    stderr: Option<ChildStderr>,
-}
-
-impl Parec {
-    fn new(device: String, app: Application) -> Result<Self, String> {
-        let mut child = Command::new("parec")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .arg("--verbose")
-            .arg("--device")
-            .arg(device)
-            .arg("--monitor-stream")
-            .arg(app.sink_input_index.to_string())
-            .arg("--format=float32le")
-            .arg("--rate=48000")
-            .arg("--channels=2")
-            .arg("--latency=1")
-            .arg("--process-time=1")
-            .spawn()
-            .map_err(|err| format!("Could not spawn Parec instance: {}", err))?;
-
-        let stdout = child.stdout.take().expect("Take stdout from child");
-        let stderr = child.stderr.take().expect("Take stderr from child");
-
-        Ok(Self {
-            child: child.into(),
-            stderr: Some(stderr),
-            stdout,
-        })
-    }
-}
-
 fn spawn_parec(device: String, app: Application) -> Result<Child, String> {
     Command::new("parec")
         .stdout(Stdio::piped())
@@ -217,30 +182,70 @@ fn spawn_parec(device: String, app: Application) -> Result<Child, String> {
         .map_err(|err| format!("Could not spawn Parec instance: {}", err))
 }
 
-// We must implement this otherwise when a Parec stream is dropped, the child will continue to live
-impl Drop for Parec {
-    fn drop(&mut self) {
-        self.child.lock().unwrap().kill().expect("Child killed");
-    }
-}
-
 fn run_audio_thread(audio: Arc<AudioSystem>) {
     thread::spawn(move || {
         let mut stdout = None;
-        let mut stderr = None;
+        let stderr = Arc::new(Mutex::new(None));
 
         let receiver = audio.receiver.clone();
         let producer = audio.audio_producer.clone();
+        let status = audio.status.clone();
+
+        // Listen for events
+        thread::spawn({
+            let stderr = stderr.clone();
+            let sender = audio.sender.clone();
+
+            move || {
+                loop {
+                    thread::sleep(Duration::from_millis(1));
+
+                    let mut stderr = stderr.lock().unwrap();
+
+                    let event = stderr.as_mut().and_then(|stderr| {
+                        let line = read_from_parec_stderr(stderr);
+                        ParecEvent::parse(line)
+                    });
+
+                    if let Some(event) = event {
+                        let correct_device = audio.pulse.device_name();
+
+                        // Parec stream is no longer valid
+                        if event.is_invalid(correct_device) {
+                            sender.send(AudioMessage::Clear).unwrap();
+                        }
+
+                        if let ParecEvent::Time(_, latency) = event {
+                            audio.latency.store(latency);
+                        }
+
+                        if let ParecEvent::TimedOut = event {
+                            *(status.lock().unwrap()) =
+                                AudioStatus::Failed("Stream timed out.".to_string());
+                        }
+
+                        if let ParecEvent::Connected(_, _) = event {
+                            let application = audio.selected_app.lock().unwrap();
+
+                            if let Some(app) = &*application {
+                                *(status.lock().unwrap()) = AudioStatus::Connected(app.to_owned());
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
         loop {
             if let Ok(event) = receiver.try_recv() {
                 match event {
                     AudioMessage::StreamSpawned(new_stdout, new_stderr) => {
                         stdout = Some(new_stdout);
-                        stderr = Some(new_stderr);
+                        *(stderr.lock().unwrap()) = Some(BufReader::new(new_stderr));
                     }
-                    AudioMessage::StreamApplication(app) => {
-                        audio.set_application(app);
+                    AudioMessage::Clear => {
+                        stdout = None;
+                        *(stderr.lock().unwrap()) = None;
                     }
                 }
             }
