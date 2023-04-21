@@ -1,7 +1,6 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::Instant,
 };
 
 use crossbeam::channel::{unbounded, Receiver, Sender};
