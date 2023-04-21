@@ -52,6 +52,17 @@ pub struct AudioSystem {
     meter: Arc<StereoMeter>,
 }
 
+/// Helper struct for passing around audio related data
+#[derive(Clone)]
+pub struct AudioContext {
+    pub meter: Arc<StereoMeter>,
+    pub pulse: Arc<PulseAudio>,
+    pub selected_app: SelectedApp,
+    pub status: CurrentAudioStatus,
+    pub latency: AudioLatency,
+    pub time: AudioTime,
+}
+
 #[derive(Default)]
 pub enum AudioStatus {
     #[default]
@@ -165,6 +176,17 @@ impl AudioSystem {
 
     pub fn stream(&self) -> AudioStream {
         AudioStream(self.audio_consumer.clone())
+    }
+
+    pub fn context(&self) -> AudioContext {
+        AudioContext {
+            meter: self.meter.clone(),
+            pulse: self.pulse.clone(),
+            selected_app: self.selected_app.clone(),
+            status: self.status.clone(),
+            latency: self.latency.clone(),
+            time: self.time.clone(),
+        }
     }
 }
 
@@ -334,7 +356,9 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                     meter.process(&samples);
                 }
 
-                thread::sleep(Duration::from_millis(1));
+                if stdout.is_none() {
+                    thread::sleep(Duration::from_millis(1));
+                }
             }
         })
         .unwrap();
