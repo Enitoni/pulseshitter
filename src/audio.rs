@@ -199,7 +199,7 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
         let pulse = audio.pulse.clone();
 
         // Update applications periodically
-        thread::spawn(move || {
+        thread::spawn(move || loop {
             pulse.update_applications();
             thread::sleep(Duration::from_secs(1));
         });
