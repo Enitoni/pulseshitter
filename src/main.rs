@@ -140,16 +140,19 @@ pub enum Action {
 fn main() {
     let app = Arc::new(App::new());
 
-    thread::spawn({
-        let state = Arc::clone(&app);
-        let receiver = state.action_receiver.clone();
+    thread::Builder::new()
+        .name("action-polling".to_string())
+        .spawn({
+            let state = Arc::clone(&app);
+            let receiver = state.action_receiver.clone();
 
-        move || loop {
-            if let Ok(action) = receiver.recv() {
-                state.handle_action(action)
+            move || loop {
+                if let Ok(action) = receiver.recv() {
+                    state.handle_action(action)
+                }
             }
-        }
-    });
+        })
+        .unwrap();
 
     run_ui(app).unwrap();
 }

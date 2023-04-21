@@ -189,93 +189,103 @@ fn spawn_parec(device: String, app: Application) -> Result<Child, String> {
 }
 
 fn run_audio_thread(audio: Arc<AudioSystem>) {
-    thread::spawn(move || {
-        let mut stdout = None;
-        let stderr = Arc::new(Mutex::new(None));
+    thread::Builder::new()
+        .name("audio".to_string())
+        .spawn(move || {
+            let mut stdout = None;
+            let stderr = Arc::new(Mutex::new(None));
 
-        let receiver = audio.receiver.clone();
-        let producer = audio.audio_producer.clone();
-        let status = audio.status.clone();
-        let pulse = audio.pulse.clone();
+            let receiver = audio.receiver.clone();
+            let producer = audio.audio_producer.clone();
+            let status = audio.status.clone();
+            let pulse = audio.pulse.clone();
 
-        // Update applications periodically
-        thread::spawn(move || loop {
-            pulse.update_applications();
-            thread::sleep(Duration::from_secs(1));
-        });
+            // Update applications periodically
+            thread::Builder::new()
+                .name("pulse-app-polling".to_string())
+                .spawn(move || loop {
+                    pulse.update_applications();
+                    thread::sleep(Duration::from_secs(1));
+                })
+                .unwrap();
 
-        // Listen for events
-        thread::spawn({
-            let stderr = stderr.clone();
-            let sender = audio.sender.clone();
+            // Listen for events
+            thread::Builder::new()
+                .name("audio-events".to_string())
+                .spawn({
+                    let stderr = stderr.clone();
+                    let sender = audio.sender.clone();
 
-            move || {
-                loop {
-                    thread::sleep(Duration::from_millis(1));
+                    move || {
+                        loop {
+                            thread::sleep(Duration::from_millis(1));
 
-                    let mut stderr = stderr.lock().unwrap();
+                            let mut stderr = stderr.lock().unwrap();
 
-                    let event = stderr.as_mut().and_then(|stderr| {
-                        let line = read_from_parec_stderr(stderr);
-                        ParecEvent::parse(line)
-                    });
+                            let event = stderr.as_mut().and_then(|stderr| {
+                                let line = read_from_parec_stderr(stderr);
+                                ParecEvent::parse(line)
+                            });
 
-                    if let Some(event) = event {
-                        let correct_device = audio.pulse.device_name();
+                            if let Some(event) = event {
+                                let correct_device = audio.pulse.device_name();
 
-                        // Parec stream is no longer valid
-                        if event.is_invalid(correct_device) {
-                            sender.send(AudioMessage::Clear).unwrap();
-                        }
+                                // Parec stream is no longer valid
+                                if event.is_invalid(correct_device) {
+                                    sender.send(AudioMessage::Clear).unwrap();
+                                }
 
-                        if let ParecEvent::Time(time, latency) = event {
-                            audio.time.store(time);
-                            audio.latency.store(latency);
-                        }
+                                if let ParecEvent::Time(time, latency) = event {
+                                    audio.time.store(time);
+                                    audio.latency.store(latency);
+                                }
 
-                        if let ParecEvent::TimedOut = event {
-                            *(status.lock().unwrap()) =
-                                AudioStatus::Failed("Stream timed out.".to_string());
-                        }
+                                if let ParecEvent::TimedOut = event {
+                                    *(status.lock().unwrap()) =
+                                        AudioStatus::Failed("Stream timed out.".to_string());
+                                }
 
-                        if let ParecEvent::Connected(_, _) = event {
-                            let application = audio.selected_app.lock().unwrap();
+                                if let ParecEvent::Connected(_, _) = event {
+                                    let application = audio.selected_app.lock().unwrap();
 
-                            if let Some(app) = &*application {
-                                *(status.lock().unwrap()) = AudioStatus::Connected(app.to_owned());
+                                    if let Some(app) = &*application {
+                                        *(status.lock().unwrap()) =
+                                            AudioStatus::Connected(app.to_owned());
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
-        });
+                })
+                .unwrap();
 
-        loop {
-            if let Ok(event) = receiver.try_recv() {
-                match event {
-                    AudioMessage::StreamSpawned(new_stdout, new_stderr) => {
-                        stdout = Some(new_stdout);
-                        *(stderr.lock().unwrap()) = Some(BufReader::new(new_stderr));
+            loop {
+                if let Ok(event) = receiver.try_recv() {
+                    match event {
+                        AudioMessage::StreamSpawned(new_stdout, new_stderr) => {
+                            stdout = Some(new_stdout);
+                            *(stderr.lock().unwrap()) = Some(BufReader::new(new_stderr));
+                        }
+                        AudioMessage::Clear => {
+                            stdout = None;
+                            *(stderr.lock().unwrap()) = None;
+                        }
                     }
-                    AudioMessage::Clear => {
-                        stdout = None;
-                        *(stderr.lock().unwrap()) = None;
-                    }
                 }
+
+                // Read audio into buffer
+                if let Some(stdout) = stdout.as_mut() {
+                    let mut producer = producer.lock().unwrap();
+                    let mut buf = [0; BUFFER_SIZE];
+
+                    let read = stdout.read(&mut buf).unwrap_or_default();
+                    producer.push_slice(&buf[..read]);
+                }
+
+                thread::sleep(Duration::from_millis(1));
             }
-
-            // Read audio into buffer
-            if let Some(stdout) = stdout.as_mut() {
-                let mut producer = producer.lock().unwrap();
-                let mut buf = [0; BUFFER_SIZE];
-
-                let read = stdout.read(&mut buf).unwrap_or_default();
-                producer.push_slice(&buf[..read]);
-            }
-
-            thread::sleep(Duration::from_millis(1));
-        }
-    });
+        })
+        .unwrap();
 }
 
 enum ParecEvent {

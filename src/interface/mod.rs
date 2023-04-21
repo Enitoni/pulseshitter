@@ -108,16 +108,19 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
 fn run_event_loop() -> Receiver<Event> {
     let (sender, receiver) = mpsc::channel();
 
-    thread::spawn(move || loop {
-        match read() {
-            Ok(event) => {
-                if matches!(event, Event::Key(_)) {
-                    sender.send(event).expect("Send");
+    thread::Builder::new()
+        .name("ui-events".to_string())
+        .spawn(move || loop {
+            match read() {
+                Ok(event) => {
+                    if matches!(event, Event::Key(_)) {
+                        sender.send(event).expect("Send");
+                    }
                 }
-            }
-            Err(err) => eprintln!("{:?}", err),
-        };
-    });
+                Err(err) => eprintln!("{:?}", err),
+            };
+        })
+        .unwrap();
 
     receiver
 }
