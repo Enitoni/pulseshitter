@@ -12,7 +12,7 @@ use std::{
         Arc,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tui::{
     backend::CrosstermBackend,
@@ -40,54 +40,58 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
     let mut terminal = Terminal::new(backend)?;
     let events = run_event_loop();
 
-    loop {
-        {
-            let mut view = app.current_view.lock().unwrap();
+    'ui: loop {
+        let frame_now = Instant::now();
 
-            let draw_result = terminal.draw(|f| {
-                let size = f.size();
+        let mut view = app.current_view.lock().unwrap();
 
-                let is_big_enough = size.width >= 70 && size.height >= 22;
+        let draw_result = terminal.draw(|f| {
+            let size = f.size();
 
-                if !is_big_enough {
-                    let notice = Paragraph::new("Please resize your terminal window.")
-                        .wrap(Wrap { trim: false });
+            let is_big_enough = size.width >= 70 && size.height >= 22;
 
-                    f.render_widget(notice, size);
+            if !is_big_enough {
+                let notice = Paragraph::new("Please resize your terminal window.")
+                    .wrap(Wrap { trim: false });
 
-                    return;
+                f.render_widget(notice, size);
+
+                return;
+            }
+
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(4), Constraint::Percentage(100)])
+                .horizontal_margin(1)
+                .split(size);
+
+            let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
+
+            f.render_widget(logo, chunks[0]);
+            f.render_widget(&*view, chunks[1]);
+        });
+
+        if let Err(err) = draw_result {
+            eprintln!("Failed to draw: {:?}", err);
+            break;
+        };
+
+        while let Ok(event) = events.try_recv() {
+            if let Event::Key(key) = &event {
+                if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
+                    app.action_sender.send(Action::Exit).unwrap();
+                    break 'ui;
                 }
+            }
 
-                let chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(4), Constraint::Percentage(100)])
-                    .horizontal_margin(1)
-                    .split(size);
-
-                let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
-
-                f.render_widget(logo, chunks[0]);
-                f.render_widget(&*view, chunks[1]);
-            });
-
-            if let Err(err) = draw_result {
-                eprintln!("Failed to draw: {:?}", err);
-                break;
-            };
-
-            if let Ok(event) = events.try_recv() {
-                if let Event::Key(key) = &event {
-                    if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
-                        app.action_sender.send(Action::Exit).unwrap();
-                        break;
-                    }
-                }
-
-                view.handle_event(event);
-            };
+            view.handle_event(event);
         }
 
-        thread::sleep(Duration::from_secs_f32(FPS / 1000.));
+        let elapsed = frame_now.elapsed().as_secs_f32();
+        let sleep_duration = Duration::from_secs_f32((FPS / 1000.) - elapsed);
+
+        drop(view);
+        thread::sleep(sleep_duration);
     }
 
     disable_raw_mode()?;
@@ -106,7 +110,11 @@ fn run_event_loop() -> Receiver<Event> {
 
     thread::spawn(move || loop {
         match read() {
-            Ok(event) => sender.send(event).expect("Send"),
+            Ok(event) => {
+                if matches!(event, Event::Key(_)) {
+                    sender.send(event).expect("Send");
+                }
+            }
             Err(err) => eprintln!("{:?}", err),
         };
     });
