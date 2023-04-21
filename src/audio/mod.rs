@@ -30,7 +30,7 @@ pub type Sample = f32;
 pub const SAMPLE_RATE: usize = 48000;
 pub const SAMPLE_IN_BYTES: usize = 4;
 
-const BUFFER_SIZE: usize = 4068;
+const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * 256;
 
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
@@ -352,7 +352,7 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
 
                     producer.push_slice(new_bytes);
 
-                    let samples = raw_samples_from_bytes(new_bytes);
+                    let samples = raw_samples_from_bytes(&buf);
                     meter.process(&samples);
                 }
 

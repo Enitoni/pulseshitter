@@ -35,8 +35,14 @@ impl Meter {
             buffer.drain(overflow..);
         }
 
+        let current_value = self.current_value.load();
         let max_value = buffer.iter().fold(0f32, |acc, x| acc.max((*x).abs()));
-        self.current_value.store(max_value);
+
+        if max_value > current_value {
+            self.current_value.store(max_value);
+        } else {
+            self.current_value.store(current_value * 0.999);
+        }
     }
 
     pub fn value(&self) -> f32 {
