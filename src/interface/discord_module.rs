@@ -19,7 +19,10 @@ impl DiscordModule {
 
 impl Widget for &DiscordModule {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        let block = Block::default().title("─ Discord ").borders(Borders::all());
+        let block = Block::default()
+            .border_style(Style::default().fg(Color::DarkGray))
+            .title("─ Discord ")
+            .borders(Borders::all());
 
         let block_inner = {
             let area = block.inner(area);

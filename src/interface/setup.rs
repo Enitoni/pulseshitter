@@ -5,6 +5,7 @@ use crossterm::event::{Event, KeyCode};
 use enum_iterator::{next_cycle, Sequence};
 use tui::{
     layout::{Constraint, Direction, Layout},
+    style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
@@ -99,7 +100,11 @@ impl ViewController for SetupView {
 
 impl Widget for &SetupView {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        let block = Block::default().title("Setup").borders(Borders::all());
+        let block = Block::default()
+            .title("─ Setup ")
+            .borders(Borders::all())
+            .border_style(Style::default().fg(Color::DarkGray));
+
         let block_inner = block.inner(area);
         block.render(area, buf);
 
