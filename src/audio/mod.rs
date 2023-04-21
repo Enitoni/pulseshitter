@@ -13,7 +13,7 @@ use std::time::Duration;
 use songbird::input::reader::MediaSource;
 use songbird::input::{Codec, Container, Input, Reader};
 
-use crate::pulse::{Application, PulseAudio};
+mod analysis;
 
 pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
 pub type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;
