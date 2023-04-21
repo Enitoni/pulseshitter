@@ -33,7 +33,7 @@ pub struct AudioSystem {
     pub time: AudioTime,
 
     pulse: Arc<PulseAudio>,
-    child: Arc<AtomicCell<Option<Child>>>,
+    child: Arc<Mutex<Option<Child>>>,
 
     sender: Sender<AudioMessage>,
     receiver: Receiver<AudioMessage>,
@@ -104,7 +104,14 @@ impl AudioSystem {
                         let stdout = child.stdout.take().expect("Take stdout from child");
                         let stderr = child.stderr.take().expect("Take stderr from child");
 
-                        stored_child.store(Some(child));
+                        let mut stored_child = stored_child.lock().unwrap();
+
+                        // Kill existing child if it exists
+                        if let Some(stored_child) = stored_child.as_mut() {
+                            stored_child.kill().expect("Kill child");
+                        }
+
+                        *stored_child = Some(child);
 
                         sender
                             .send(AudioMessage::StreamSpawned(stdout, stderr))
@@ -218,13 +225,10 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
 
                     move || {
                         loop {
-                            thread::sleep(Duration::from_millis(1));
-
-                            let mut stderr = stderr.lock().unwrap();
-
-                            let event = stderr.as_mut().and_then(|stderr| {
-                                let line = read_from_parec_stderr(stderr);
-                                ParecEvent::parse(line)
+                            let event = stderr.try_lock().ok().and_then(|mut f| {
+                                f.as_mut()
+                                    .and_then(read_from_parec_stderr)
+                                    .and_then(ParecEvent::parse)
                             });
 
                             if let Some(event) = event {
@@ -254,13 +258,15 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                                     }
                                 }
                             }
+
+                            thread::sleep(Duration::from_millis(1));
                         }
                     }
                 })
                 .unwrap();
 
             loop {
-                if let Ok(event) = receiver.try_recv() {
+                while let Ok(event) = receiver.try_recv() {
                     match event {
                         AudioMessage::StreamSpawned(new_stdout, new_stderr) => {
                             stdout = Some(new_stdout);
@@ -344,12 +350,17 @@ impl ParecEvent {
     }
 }
 
-fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> String {
+fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> Option<String> {
     let mut line = String::new();
     let mut c = [0; 1];
 
     loop {
-        let _ = buffer.read_exact(&mut c);
+        match buffer.read_exact(&mut c) {
+            Ok(_) => {}
+            Err(_) => {
+                return None;
+            }
+        };
 
         match c {
             [13] | [10] => break,
@@ -357,5 +368,5 @@ fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> String {
         }
     }
 
-    line
+    Some(line)
 }
