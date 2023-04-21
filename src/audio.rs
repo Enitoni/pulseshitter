@@ -196,6 +196,13 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
         let receiver = audio.receiver.clone();
         let producer = audio.audio_producer.clone();
         let status = audio.status.clone();
+        let pulse = audio.pulse.clone();
+
+        // Update applications periodically
+        thread::spawn(move || {
+            pulse.update_applications();
+            thread::sleep(Duration::from_secs(1));
+        });
 
         // Listen for events
         thread::spawn({
