@@ -1,3 +1,4 @@
 /target
 /profiling
 config.ron
+profile.json
