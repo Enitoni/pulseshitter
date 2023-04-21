@@ -3,6 +3,7 @@ use crossbeam::channel::{unbounded, Receiver, Sender};
 use lazy_static::lazy_static;
 use regex::Regex;
 use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
+use std::fmt::Display;
 use std::io::{BufReader, Read, Seek};
 use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -49,7 +50,24 @@ pub enum AudioStatus {
     Connecting(Application),
     Connected(Application),
     Searching(Application),
-    Failed(String),
+    Failed(AudioError),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AudioError {
+    TimedOut,
+    ParecMissing,
+}
+
+impl Display for AudioError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let message = match self {
+            AudioError::TimedOut => "Stream timed out",
+            AudioError::ParecMissing => "Cannot spawn Parec",
+        };
+
+        write!(f, "{}", message)
+    }
 }
 
 pub enum AudioMessage {
@@ -188,7 +206,7 @@ impl MediaSource for AudioStream {
     }
 }
 
-fn spawn_parec(device: String, app: Application) -> Result<Child, String> {
+fn spawn_parec(device: String, app: Application) -> Result<Child, AudioError> {
     Command::new("parec")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -203,7 +221,7 @@ fn spawn_parec(device: String, app: Application) -> Result<Child, String> {
         .arg("--latency=1")
         .arg("--process-time=1")
         .spawn()
-        .map_err(|err| format!("Could not spawn Parec instance: {}", err))
+        .map_err(|_| AudioError::ParecMissing)
 }
 
 fn run_audio_thread(audio: Arc<AudioSystem>) {
@@ -257,7 +275,7 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
 
                                 if let ParecEvent::TimedOut = event {
                                     *(status.lock().unwrap()) =
-                                        AudioStatus::Failed("Stream timed out.".to_string());
+                                        AudioStatus::Failed(AudioError::TimedOut);
                                 }
 
                                 if let ParecEvent::Connected(_, _) = event {

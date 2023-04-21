@@ -9,15 +9,18 @@ use tui::{
 };
 
 use crate::{
-    audio::{AudioLatency, AudioStatus, AudioTime, CurrentAudioStatus},
+    audio::{AudioError, AudioLatency, AudioStatus, AudioTime, CurrentAudioStatus},
     pulse::PulseAudio,
 };
+
+use super::animation::{self, AnimatedSpan, Animation};
 
 pub struct AudioModule {
     status: CurrentAudioStatus,
     latency: AudioLatency,
     time: AudioTime,
     pulse: Arc<PulseAudio>,
+    animation: Animation,
 }
 
 impl AudioModule {
@@ -32,7 +35,140 @@ impl AudioModule {
             pulse,
             time,
             latency,
+            animation: Default::default(),
         }
+    }
+}
+
+impl AudioModule {
+    fn render_idle(&self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+        let status_text = Paragraph::new("⏻ Offline").style(Style::default().fg(Color::DarkGray));
+
+        let help_text = Paragraph::new(
+            "Use the arrow keys to select an application to stream.
+
+            Once you press enter, you should be able to hear the audio coming from your bot.
+        ",
+        )
+        .wrap(Wrap { trim: true });
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(2), Constraint::Percentage(100)])
+            .split(area);
+
+        status_text.render(chunks[0], buf);
+        help_text.render(chunks[1], buf);
+    }
+
+    fn render_connecting(&self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(2), Constraint::Percentage(100)])
+            .split(area);
+
+        let loading: AnimatedSpan = animation::Loading.into();
+
+        let help_text = Paragraph::new(
+            "Make sure the application is streaming audio if it doesn't connect immediately.
+            ",
+        )
+        .wrap(Wrap { trim: true });
+
+        help_text.render(chunks[1], buf);
+
+        self.animation.render(
+            1,
+            vec![
+                loading.clone(),
+                (vec![" Connecting".to_string()], loading.1.clone()),
+                (
+                    vec![
+                        "".to_string(),
+                        ".".to_string(),
+                        "..".to_string(),
+                        "...".to_string(),
+                    ],
+                    loading.1,
+                ),
+            ],
+            chunks[0],
+            buf,
+        );
+    }
+
+    fn render_error(
+        &self,
+        error: AudioError,
+        area: tui::layout::Rect,
+        buf: &mut tui::buffer::Buffer,
+    ) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(2), Constraint::Percentage(100)])
+            .split(area);
+
+        let error_status: AnimatedSpan = animation::Error.into();
+
+        let error_help = match error {
+            AudioError::TimedOut => {
+                "pulseshitter was unable to connect to your application.
+            
+            Make sure it is open and playing audio, then try again."
+            }
+            AudioError::ParecMissing => {
+                "pulseshitter was unable to spawn the parec process for recording.
+            
+            Is pulseaudio or pipewire installed? Is parec in path?"
+            }
+        };
+
+        let help_text = Paragraph::new(format!(
+            "{}
+            
+            {}
+            ",
+            error_help,
+            "If the problem persists, please create a GitHub issue with a reproducible example."
+        ))
+        .wrap(Wrap { trim: true });
+
+        let animations = vec![
+            error_status.clone(),
+            (vec![format!("  {}", error)], error_status.1),
+        ];
+
+        self.animation.render(1, animations, chunks[0], buf);
+        help_text.render(chunks[1], buf);
+    }
+
+    fn render_connected(&self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(2), Constraint::Percentage(100)])
+            .split(area);
+
+        let status_text = Paragraph::new("⏵ Streaming").style(Style::default().fg(Color::Green));
+
+        let info_lines = vec![
+            Spans::from(Span::styled("Device:", Style::default().fg(Color::Gray))),
+            Spans::from(Span::raw(self.pulse.device_name())),
+            Spans::default(),
+            Spans::from(Span::styled(
+                "Latency:         Time elapsed:",
+                Style::default().fg(Color::Gray),
+            )),
+            Spans::from(Span::raw(format!(
+                "{:.3}ms          {}",
+                self.latency.load() as f32 / 1000.,
+                format_seconds(self.time.load()),
+            ))),
+        ];
+
+        let info_paragraph = Paragraph::new(info_lines).wrap(Wrap { trim: false });
+
+        status_text.render(chunks[0], buf);
+        info_paragraph.render(chunks[1], buf);
     }
 }
 
@@ -55,64 +191,15 @@ impl Widget for &AudioModule {
 
         block.render(area, buf);
 
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(2), Constraint::Percentage(100)])
-            .split(block_inner);
-
         let status = self.status.lock().unwrap();
 
-        if let AudioStatus::Failed(err) = &*status {
-            let paragraph = Paragraph::new(format!("⚠  An error occured! {}", err))
-                .style(Style::default().fg(Color::Red))
-                .wrap(Wrap { trim: false });
-
-            paragraph.render(block_inner, buf);
-            return;
+        match &*status {
+            AudioStatus::Idle => self.render_idle(block_inner, buf),
+            AudioStatus::Connecting(_) => self.render_connecting(block_inner, buf),
+            AudioStatus::Failed(err) => self.render_error(*err, block_inner, buf),
+            AudioStatus::Connected(_) => self.render_connected(block_inner, buf),
+            _ => {}
         }
-
-        let status_text = match &*status {
-            AudioStatus::Idle => "Idle".to_string(),
-            AudioStatus::Connecting(app) => format!("Connecting to {}...", app.name),
-            AudioStatus::Connected(app) => format!("Streaming {}", app.name),
-            AudioStatus::Searching(app) => format!("Reconnecting to {}...", app.name),
-            _ => unreachable!(),
-        };
-
-        let status_symbol = match &*status {
-            AudioStatus::Connecting(_) | AudioStatus::Searching(_) => "⭮",
-            AudioStatus::Connected(_) => "►",
-            _ => "○",
-        };
-
-        let status_color = match &*status {
-            AudioStatus::Connecting(_) | AudioStatus::Searching(_) => Color::Yellow,
-            AudioStatus::Connected(_) => Color::Green,
-            _ => Color::Reset,
-        };
-
-        let status_paragraph = Paragraph::new(format!("{}  {}", status_symbol, status_text))
-            .style(Style::default().fg(status_color));
-
-        let info_lines = vec![
-            Spans::from(Span::styled("Device:", Style::default().fg(Color::Gray))),
-            Spans::from(Span::raw(self.pulse.device_name())),
-            Spans::default(),
-            Spans::from(Span::styled(
-                "Latency:         Time elapsed:",
-                Style::default().fg(Color::Gray),
-            )),
-            Spans::from(Span::raw(format!(
-                "{:.3}ms          {}",
-                self.latency.load() as f32 / 1000.,
-                format_seconds(self.time.load()),
-            ))),
-        ];
-
-        let info_paragraph = Paragraph::new(info_lines).wrap(Wrap { trim: false });
-
-        status_paragraph.render(chunks[0], buf);
-        info_paragraph.render(chunks[1], buf);
     }
 }
 
