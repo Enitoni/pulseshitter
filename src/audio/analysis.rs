@@ -41,7 +41,7 @@ impl Meter {
         if max_value > current_value {
             self.current_value.store(max_value);
         } else {
-            self.current_value.store(current_value * 0.999);
+            self.current_value.store(current_value * 0.995);
         }
     }
 
