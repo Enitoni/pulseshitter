@@ -69,7 +69,6 @@ impl Meter {
                 (1. - Self::MIN_SMOOTHING) + Self::MIN_SMOOTHING * Self::SMOOTHING_BOUNDARY;
 
             let smoothing = min_smoothing + (max_smoothing - min_smoothing) * release;
-            dbg!(release, smoothing);
 
             self.samples_since_last_peak.fetch_add(buf.len());
             self.current_value.store(current_value * smoothing);
