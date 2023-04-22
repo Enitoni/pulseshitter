@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::io::Write;
 use std::{fs::File, io::Read};
 
@@ -9,14 +10,20 @@ pub struct Config {
 }
 
 impl Config {
-    const FILE_NAME: &str = "config.ron";
+    fn path() -> String {
+        let config_dir = env::var("XDG_CONFIG_HOME")
+            .or_else(|_| env::var("HOME").map(|path| path + "/.config"))
+            .unwrap_or_else(|_| ".".to_string());
+
+        format!("{}/pulseshitter-config.ron", config_dir)
+    }
 
     pub fn new(bot_token: String, user_id: u64) -> Self {
         Self { bot_token, user_id }
     }
 
     pub fn restore() -> Option<Self> {
-        File::open(Self::FILE_NAME)
+        File::open(Self::path())
             .ok()
             .and_then(|mut file| {
                 let mut contents = String::new();
@@ -26,9 +33,10 @@ impl Config {
     }
 
     pub fn save(&self) {
+        eprintln!("{}", Self::path());
         match ron::to_string(self) {
             Ok(result) => {
-                File::create(Self::FILE_NAME)
+                File::create(Self::path())
                     .ok()
                     .and_then(|mut f| write!(f, "{}", result).ok());
             }
