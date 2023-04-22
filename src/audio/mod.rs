@@ -1,21 +1,20 @@
+use self::analysis::StereoMeter;
+use self::parec::{spawn_event_thread, spawn_parec, Stderr, PAREC_SAMPLE_RATE};
 use crate::pulse::{Application, PulseAudio};
 use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use lazy_static::lazy_static;
-use regex::Regex;
 use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
 use songbird::input::reader::MediaSource;
 use songbird::input::{Codec, Container, Input, Reader};
 use std::fmt::Display;
 use std::io::{BufReader, Read, Seek};
-use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStderr, ChildStdout};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use self::analysis::StereoMeter;
-
 mod analysis;
+mod parec;
 
 pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
 pub type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;
@@ -31,7 +30,6 @@ pub const SAMPLE_RATE: usize = 48000;
 pub const SAMPLE_IN_BYTES: usize = 4;
 
 const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * SAMPLE_RATE;
-const PAREC_RATE: usize = 256;
 
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
@@ -244,34 +242,15 @@ impl MediaSource for AudioStream {
     }
 }
 
-fn spawn_parec(device: String, app: Application) -> Result<Child, AudioError> {
-    Command::new("parec")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .arg("--verbose")
-        .arg("--device")
-        .arg(device)
-        .arg("--monitor-stream")
-        .arg(app.sink_input_index.to_string())
-        .arg("--format=float32le")
-        .arg("--rate=48000")
-        .arg("--channels=2")
-        .arg("--latency=1")
-        .arg("--process-time=1")
-        .spawn()
-        .map_err(|_| AudioError::ParecMissing)
-}
-
 fn run_audio_thread(audio: Arc<AudioSystem>) {
     thread::Builder::new()
         .name("audio".to_string())
         .spawn(move || {
             let mut stdout = None;
-            let stderr = Arc::new(Mutex::new(None));
+            let stderr = Stderr::default();
 
             let receiver = audio.receiver.clone();
             let producer = audio.audio_producer.clone();
-            let status = audio.status.clone();
             let pulse = audio.pulse.clone();
 
             let meter_buffer = audio.meter_buffer.clone();
@@ -279,61 +258,14 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
 
             let time_to_wait = 1. / SAMPLE_RATE as f32;
 
+            spawn_event_thread(audio, stderr.clone());
+
             // Update applications periodically
             thread::Builder::new()
                 .name("pulse-app-polling".to_string())
                 .spawn(move || loop {
                     pulse.update_applications();
                     thread::sleep(Duration::from_secs(1));
-                })
-                .unwrap();
-
-            // Listen for events
-            thread::Builder::new()
-                .name("audio-events".to_string())
-                .spawn({
-                    let stderr = stderr.clone();
-                    let sender = audio.sender.clone();
-
-                    move || {
-                        loop {
-                            let event = stderr.try_lock().ok().and_then(|mut f| {
-                                f.as_mut()
-                                    .and_then(read_from_parec_stderr)
-                                    .and_then(ParecEvent::parse)
-                            });
-
-                            if let Some(event) = event {
-                                let correct_device = audio.pulse.device_name();
-
-                                // Parec stream is no longer valid
-                                if event.is_invalid(correct_device) {
-                                    sender.send(AudioMessage::Clear).unwrap();
-                                }
-
-                                if let ParecEvent::Time(time, latency) = event {
-                                    audio.time.store(time);
-                                    audio.latency.store(latency);
-                                }
-
-                                if let ParecEvent::TimedOut = event {
-                                    *(status.lock().unwrap()) =
-                                        AudioStatus::Failed(AudioError::TimedOut);
-                                }
-
-                                if let ParecEvent::Connected(_, _) = event {
-                                    let application = audio.selected_app.lock().unwrap();
-
-                                    if let Some(app) = &*application {
-                                        *(status.lock().unwrap()) =
-                                            AudioStatus::Connected(app.to_owned());
-                                    }
-                                }
-                            }
-
-                            thread::sleep(Duration::from_millis(1));
-                        }
-                    }
                 })
                 .unwrap();
 
@@ -353,7 +285,7 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                         let mut samples = raw_samples_from_bytes(&meter_buffer[safe_range]);
 
                         // Prevent freezing when there is no output
-                        samples.resize(PAREC_RATE, 0.);
+                        samples.resize(PAREC_SAMPLE_RATE, 0.);
 
                         meter.process(&samples);
                         meter_buffer.drain(safe_range);
@@ -369,11 +301,11 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                     match event {
                         AudioMessage::StreamSpawned(new_stdout, new_stderr) => {
                             stdout = Some(new_stdout);
-                            *(stderr.lock().unwrap()) = Some(BufReader::new(new_stderr));
+                            *(stderr.lock()) = Some(BufReader::new(new_stderr));
                         }
                         AudioMessage::Clear => {
                             stdout = None;
-                            *(stderr.lock().unwrap()) = None;
+                            *(stderr.lock()) = None;
                         }
                     }
                 }
@@ -393,83 +325,6 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
             }
         })
         .unwrap();
-}
-
-enum ParecEvent {
-    TimedOut,
-    /// Device name, index
-    Connected(String, u32),
-    /// Time, latency
-    Time(f32, u32),
-    StreamMoved,
-}
-
-lazy_static! {
-    static ref CONNECTED_REGEX: Regex =
-        Regex::new(r"Connected to device (.*?) \(index: (\d*), suspended: no\)").unwrap();
-    static ref TIME_REGEX: Regex =
-        Regex::new(r"Time: (\d+\.\d+) sec; Latency: (\d+) usec.").unwrap();
-}
-
-impl ParecEvent {
-    const STREAM_MOVED_MESSAGE: &str = "Stream moved to";
-    const STREAM_TIMEOUT: &str = "Stream error: Timeout";
-
-    pub fn parse(line: String) -> Option<Self> {
-        if let Some(captures) = CONNECTED_REGEX.captures(&line) {
-            return Some(Self::Connected(
-                captures[1].to_string(),
-                captures[2].parse().expect("Parec gives valid index"),
-            ));
-        }
-
-        if let Some(captures) = TIME_REGEX.captures(&line) {
-            return Some(Self::Time(
-                captures[1].parse().expect("Parec gives valid time"),
-                captures[2].parse().expect("Parec gives valid latency"),
-            ));
-        }
-
-        if line.contains(Self::STREAM_MOVED_MESSAGE) {
-            return Some(Self::StreamMoved);
-        }
-
-        if line.contains(Self::STREAM_TIMEOUT) {
-            return Some(Self::TimedOut);
-        }
-
-        None
-    }
-
-    /// Returns true if Parec moved or connected to a different stream
-    pub fn is_invalid(&self, correct_device: String) -> bool {
-        match self {
-            Self::Connected(device, _) => !device.contains(&correct_device),
-            Self::StreamMoved => false,
-            _ => false,
-        }
-    }
-}
-
-fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> Option<String> {
-    let mut line = String::new();
-    let mut c = [0; 1];
-
-    loop {
-        match buffer.read_exact(&mut c) {
-            Ok(_) => {}
-            Err(_) => {
-                return None;
-            }
-        };
-
-        match c {
-            [13] | [10] => break,
-            [c] => line.push(c as char),
-        }
-    }
-
-    Some(line)
 }
 
 /// Converts a slice of bytes into a vec of [Sample].
