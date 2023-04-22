@@ -1,8 +1,10 @@
+use std::{sync::Arc, thread, time::Duration};
+
 use crossbeam::atomic::AtomicCell;
 use multiversion::multiversion;
 use parking_lot::Mutex;
 
-use super::{Sample, SAMPLE_RATE};
+use super::{parec::PAREC_SAMPLE_RATE, AudioSystem, Sample, SAMPLE_IN_BYTES, SAMPLE_RATE};
 
 /// Measures dBFS of a single channel
 pub struct Meter {
@@ -54,6 +56,48 @@ impl Meter {
     }
 }
 
+#[multiversion(targets("x86_64+avx2"))]
+fn process_multiversioned(meter: &Meter, buf: &[Sample]) {
+    let mut buffer = meter.buffer.lock();
+    let window_size = meter.window_size.load();
+
+    buffer.extend_from_slice(buf);
+
+    let overflow = buffer.len() as isize + -(window_size as isize);
+    let overflow = overflow.max(0) as usize;
+
+    if overflow > 0 {
+        buffer.drain(..overflow);
+    }
+
+    let current_value = meter.current_value.load();
+    let max_value = buffer
+        .iter()
+        .fold(0f32, |acc, x| faster_max(acc, (*x).abs()));
+
+    if max_value > current_value {
+        meter.current_value.store(max_value);
+        meter.samples_since_last_peak.store(0);
+    } else {
+        let samples_since_last_peak = meter.samples_since_last_peak.load() as f32;
+
+        let release = (1. - samples_since_last_peak / Meter::SMOOTHING_RELEASE as f32)
+            .max(0.)
+            .powf(0.8);
+
+        let max_smoothing =
+            (1. - Meter::MAX_SMOOTHING) + Meter::MAX_SMOOTHING * Meter::SMOOTHING_BOUNDARY;
+
+        let min_smoothing =
+            (1. - Meter::MIN_SMOOTHING) + Meter::MIN_SMOOTHING * Meter::SMOOTHING_BOUNDARY;
+
+        let smoothing = min_smoothing + (max_smoothing - min_smoothing) * release;
+
+        meter.samples_since_last_peak.fetch_add(buf.len());
+        meter.current_value.store(current_value * smoothing);
+    }
+}
+
 pub struct StereoMeter {
     left: Meter,
     right: Meter,
@@ -102,44 +146,48 @@ fn faster_max(a: f32, b: f32) -> f32 {
     }
 }
 
-#[multiversion(targets("x86_64+avx2"))]
-fn process_multiversioned(meter: &Meter, buf: &[Sample]) {
-    let mut buffer = meter.buffer.lock();
-    let window_size = meter.window_size.load();
+/// Converts a slice of bytes into a vec of [Sample].
+pub fn raw_samples_from_bytes(bytes: &[u8]) -> Vec<Sample> {
+    bytes
+        .chunks_exact(SAMPLE_IN_BYTES)
+        .map(|b| {
+            let arr: [u8; SAMPLE_IN_BYTES] = [b[0], b[1], b[2], b[3]];
+            Sample::from_le_bytes(arr)
+        })
+        .collect()
+}
 
-    buffer.extend_from_slice(buf);
+pub fn spawn_analysis_thread(audio: Arc<AudioSystem>) {
+    let run = move || {
+        let tick_rate = 1. / SAMPLE_RATE as f32;
 
-    let overflow = buffer.len() as isize + -(window_size as isize);
-    let overflow = overflow.max(0) as usize;
+        loop {
+            let mut meter_buffer = audio.meter_buffer.lock();
 
-    if overflow > 0 {
-        buffer.drain(..overflow);
-    }
+            let meter = audio.meter.clone();
+            let buffer_len = meter_buffer.len();
 
-    let current_value = meter.current_value.load();
-    let max_value = buffer
-        .iter()
-        .fold(0f32, |acc, x| faster_max(acc, (*x).abs()));
+            // Ensure the analyser does not try to read misaligned floats
+            let remainder = buffer_len % SAMPLE_IN_BYTES * 2;
+            let safe_range = ..buffer_len - remainder;
 
-    if max_value > current_value {
-        meter.current_value.store(max_value);
-        meter.samples_since_last_peak.store(0);
-    } else {
-        let samples_since_last_peak = meter.samples_since_last_peak.load() as f32;
+            let mut samples = raw_samples_from_bytes(&meter_buffer[safe_range]);
 
-        let release = (1. - samples_since_last_peak / Meter::SMOOTHING_RELEASE as f32)
-            .max(0.)
-            .powf(0.8);
+            // Prevent the meter freezing when there is no output
+            samples.resize(PAREC_SAMPLE_RATE, 0.);
 
-        let max_smoothing =
-            (1. - Meter::MAX_SMOOTHING) + Meter::MAX_SMOOTHING * Meter::SMOOTHING_BOUNDARY;
+            meter.process(&samples);
+            meter_buffer.drain(safe_range);
 
-        let min_smoothing =
-            (1. - Meter::MIN_SMOOTHING) + Meter::MIN_SMOOTHING * Meter::SMOOTHING_BOUNDARY;
+            // Drop mutex immediately to avoid slowdown
+            drop(meter_buffer);
 
-        let smoothing = min_smoothing + (max_smoothing - min_smoothing) * release;
+            thread::sleep(Duration::from_secs_f32(tick_rate));
+        }
+    };
 
-        meter.samples_since_last_peak.fetch_add(buf.len());
-        meter.current_value.store(current_value * smoothing);
-    }
+    thread::Builder::new()
+        .name("audio-analysis".to_string())
+        .spawn(run)
+        .unwrap();
 }
