@@ -1,5 +1,5 @@
-use self::analysis::StereoMeter;
-use self::parec::{spawn_event_thread, spawn_parec, Stderr, PAREC_SAMPLE_RATE};
+use self::analysis::{spawn_analysis_thread, StereoMeter};
+use self::parec::{spawn_event_thread, spawn_parec, Stderr};
 use crate::pulse::{Application, PulseAudio};
 use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::{unbounded, Receiver, Sender};
@@ -254,11 +254,10 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
             let pulse = audio.pulse.clone();
 
             let meter_buffer = audio.meter_buffer.clone();
-            let meter = audio.meter.clone();
-
             let time_to_wait = 1. / SAMPLE_RATE as f32;
 
-            spawn_event_thread(audio, stderr.clone());
+            spawn_event_thread(audio.clone(), stderr.clone());
+            spawn_analysis_thread(audio);
 
             // Update applications periodically
             thread::Builder::new()
@@ -266,33 +265,6 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                 .spawn(move || loop {
                     pulse.update_applications();
                     thread::sleep(Duration::from_secs(1));
-                })
-                .unwrap();
-
-            thread::Builder::new()
-                .name("audio-analysis".to_string())
-                .spawn({
-                    let meter_buffer = meter_buffer.clone();
-
-                    move || loop {
-                        let mut meter_buffer = meter_buffer.lock();
-                        let buffer_len = meter_buffer.len();
-
-                        // Ensure the analyser does not try to read misaligned floats
-                        let remainder = buffer_len % SAMPLE_IN_BYTES * 2;
-                        let safe_range = ..buffer_len - remainder;
-
-                        let mut samples = raw_samples_from_bytes(&meter_buffer[safe_range]);
-
-                        // Prevent freezing when there is no output
-                        samples.resize(PAREC_SAMPLE_RATE, 0.);
-
-                        meter.process(&samples);
-                        meter_buffer.drain(safe_range);
-
-                        drop(meter_buffer);
-                        thread::sleep(Duration::from_secs_f32(time_to_wait));
-                    }
                 })
                 .unwrap();
 
@@ -325,15 +297,4 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
             }
         })
         .unwrap();
-}
-
-/// Converts a slice of bytes into a vec of [Sample].
-pub fn raw_samples_from_bytes(bytes: &[u8]) -> Vec<Sample> {
-    bytes
-        .chunks_exact(SAMPLE_IN_BYTES)
-        .map(|b| {
-            let arr: [u8; SAMPLE_IN_BYTES] = [b[0], b[1], b[2], b[3]];
-            Sample::from_le_bytes(arr)
-        })
-        .collect()
 }
