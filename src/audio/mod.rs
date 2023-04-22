@@ -133,35 +133,26 @@ impl AudioSystem {
         *(self.selected_app.lock().unwrap()) = Some(app.clone());
         *(self.status.lock().unwrap()) = AudioStatus::Connecting(app.clone());
 
-        thread::spawn({
-            let device = self.pulse.device_name();
-            let sender = self.sender.clone();
-            let status = self.status.clone();
-            let stored_child = self.child.clone();
+        match spawn_parec(self.pulse.device_name(), app) {
+            Ok(mut child) => {
+                let stdout = child.stdout.take().expect("Take stdout from child");
+                let stderr = child.stderr.take().expect("Take stderr from child");
 
-            move || {
-                match spawn_parec(device, app) {
-                    Ok(mut child) => {
-                        let stdout = child.stdout.take().expect("Take stdout from child");
-                        let stderr = child.stderr.take().expect("Take stderr from child");
+                let mut stored_child = self.child.lock().unwrap();
 
-                        let mut stored_child = stored_child.lock().unwrap();
+                // Kill existing child if it exists
+                if let Some(stored_child) = stored_child.as_mut() {
+                    stored_child.kill().expect("Kill child");
+                }
 
-                        // Kill existing child if it exists
-                        if let Some(stored_child) = stored_child.as_mut() {
-                            stored_child.kill().expect("Kill child");
-                        }
+                *stored_child = Some(child);
 
-                        *stored_child = Some(child);
-
-                        sender
-                            .send(AudioMessage::StreamSpawned(stdout, stderr))
-                            .unwrap();
-                    }
-                    Err(err) => *(status.lock().unwrap()) = AudioStatus::Failed(err),
-                };
+                self.sender
+                    .send(AudioMessage::StreamSpawned(stdout, stderr))
+                    .unwrap();
             }
-        });
+            Err(err) => *(self.status.lock().unwrap()) = AudioStatus::Failed(err),
+        };
     }
 
     pub fn clear(&self) {
