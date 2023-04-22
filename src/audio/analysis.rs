@@ -12,7 +12,7 @@ pub struct Meter {
 
 impl Meter {
     const DEFAULT_WINDOW_SIZE: usize = SAMPLE_RATE / 4;
-    const DB_RANGE: f32 = 40.;
+    const DB_RANGE: f32 = 60.;
 
     pub fn new() -> Self {
         Self {
