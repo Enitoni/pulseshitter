@@ -30,7 +30,8 @@ pub type Sample = f32;
 pub const SAMPLE_RATE: usize = 48000;
 pub const SAMPLE_IN_BYTES: usize = 4;
 
-const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * 256;
+const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * SAMPLE_RATE;
+const PAREC_RATE: usize = 256;
 
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
@@ -276,6 +277,8 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
             let meter_buffer = audio.meter_buffer.clone();
             let meter = audio.meter.clone();
 
+            let time_to_wait = 1. / SAMPLE_RATE as f32;
+
             // Update applications periodically
             thread::Builder::new()
                 .name("pulse-app-polling".to_string())
@@ -340,8 +343,6 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                     let meter_buffer = meter_buffer.clone();
 
                     move || loop {
-                        thread::sleep(Duration::from_millis(2));
-
                         let mut meter_buffer = meter_buffer.lock();
                         let buffer_len = meter_buffer.len();
 
@@ -350,10 +351,15 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                         let safe_range = ..buffer_len - remainder;
 
                         let mut samples = raw_samples_from_bytes(&meter_buffer[safe_range]);
-                        samples.resize(BUFFER_SIZE, 0.);
+
+                        // Prevent freezing when there is no output
+                        samples.resize(PAREC_RATE, 0.);
 
                         meter.process(&samples);
                         meter_buffer.drain(safe_range);
+
+                        drop(meter_buffer);
+                        thread::sleep(Duration::from_secs_f32(time_to_wait));
                     }
                 })
                 .unwrap();
@@ -376,14 +382,14 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                 if let Some(stdout) = stdout.as_mut() {
                     let mut buf = [0; BUFFER_SIZE];
 
-                    let read = stdout.read(&mut buf).unwrap_or_default();
-                    let new_bytes = &buf[..read];
+                    let bytes_read = stdout.read(&mut buf).unwrap_or_default();
+                    let new_bytes = &buf[..bytes_read];
 
                     producer.lock().unwrap().push_slice(new_bytes);
                     meter_buffer.lock().extend_from_slice(new_bytes);
                 }
 
-                thread::sleep(Duration::from_millis(1));
+                thread::sleep(Duration::from_secs_f32(time_to_wait));
             }
         })
         .unwrap();
