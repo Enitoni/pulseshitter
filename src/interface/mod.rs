@@ -52,7 +52,7 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
         let draw_result = terminal.draw(|f| {
             let area = f.size();
 
-            let is_big_enough = area.width >= 70 && area.height >= 22;
+            let is_big_enough = area.width >= 70 && area.height >= 29;
             if !is_big_enough {
                 let text = "Please resize your terminal window.";
 
