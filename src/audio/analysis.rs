@@ -1,4 +1,5 @@
 use crossbeam::atomic::AtomicCell;
+use multiversion::multiversion;
 use parking_lot::Mutex;
 
 use super::{Sample, SAMPLE_RATE};
@@ -37,42 +38,7 @@ impl Meter {
     }
 
     pub fn process(&self, buf: &[Sample]) {
-        let mut buffer = self.buffer.lock();
-        let window_size = self.window_size.load();
-
-        buffer.extend_from_slice(buf);
-
-        let overflow = buffer.len() as isize + -(window_size as isize);
-        let overflow = overflow.max(0) as usize;
-
-        if overflow > 0 {
-            buffer.drain(..overflow);
-        }
-
-        let current_value = self.current_value.load();
-        let max_value = buffer.iter().fold(0f32, |acc, x| acc.max((*x).abs()));
-
-        if max_value > current_value {
-            self.current_value.store(max_value);
-            self.samples_since_last_peak.store(0);
-        } else {
-            let samples_since_last_peak = self.samples_since_last_peak.load() as f32;
-
-            let release = (1. - samples_since_last_peak / Self::SMOOTHING_RELEASE as f32)
-                .max(0.)
-                .powf(0.8);
-
-            let max_smoothing =
-                (1. - Self::MAX_SMOOTHING) + Self::MAX_SMOOTHING * Self::SMOOTHING_BOUNDARY;
-
-            let min_smoothing =
-                (1. - Self::MIN_SMOOTHING) + Self::MIN_SMOOTHING * Self::SMOOTHING_BOUNDARY;
-
-            let smoothing = min_smoothing + (max_smoothing - min_smoothing) * release;
-
-            self.samples_since_last_peak.fetch_add(buf.len());
-            self.current_value.store(current_value * smoothing);
-        }
+        process_multiversioned(self, buf)
     }
 
     pub fn value(&self) -> f32 {
@@ -125,5 +91,55 @@ impl StereoMeter {
 impl Default for StereoMeter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn faster_max(a: f32, b: f32) -> f32 {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+#[multiversion(targets("x86_64+avx2"))]
+fn process_multiversioned(meter: &Meter, buf: &[Sample]) {
+    let mut buffer = meter.buffer.lock();
+    let window_size = meter.window_size.load();
+
+    buffer.extend_from_slice(buf);
+
+    let overflow = buffer.len() as isize + -(window_size as isize);
+    let overflow = overflow.max(0) as usize;
+
+    if overflow > 0 {
+        buffer.drain(..overflow);
+    }
+
+    let current_value = meter.current_value.load();
+    let max_value = buffer
+        .iter()
+        .fold(0f32, |acc, x| faster_max(acc, (*x).abs()));
+
+    if max_value > current_value {
+        meter.current_value.store(max_value);
+        meter.samples_since_last_peak.store(0);
+    } else {
+        let samples_since_last_peak = meter.samples_since_last_peak.load() as f32;
+
+        let release = (1. - samples_since_last_peak / Meter::SMOOTHING_RELEASE as f32)
+            .max(0.)
+            .powf(0.8);
+
+        let max_smoothing =
+            (1. - Meter::MAX_SMOOTHING) + Meter::MAX_SMOOTHING * Meter::SMOOTHING_BOUNDARY;
+
+        let min_smoothing =
+            (1. - Meter::MIN_SMOOTHING) + Meter::MIN_SMOOTHING * Meter::SMOOTHING_BOUNDARY;
+
+        let smoothing = min_smoothing + (max_smoothing - min_smoothing) * release;
+
+        meter.samples_since_last_peak.fetch_add(buf.len());
+        meter.current_value.store(current_value * smoothing);
     }
 }
