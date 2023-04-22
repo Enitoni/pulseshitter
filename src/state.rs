@@ -33,7 +33,6 @@ impl Config {
     }
 
     pub fn save(&self) {
-        eprintln!("{}", Self::path());
         match ron::to_string(self) {
             Ok(result) => {
                 File::create(Self::path())
