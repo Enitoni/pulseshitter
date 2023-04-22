@@ -49,6 +49,7 @@ pub struct AudioSystem {
     audio_producer: AudioProducer,
     audio_consumer: AudioConsumer,
 
+    meter_buffer: Arc<parking_lot::Mutex<Vec<u8>>>,
     meter: Arc<StereoMeter>,
 }
 
@@ -121,6 +122,7 @@ impl AudioSystem {
             audio_consumer: Mutex::from(audio_consumer).into(),
 
             meter: StereoMeter::new().into(),
+            meter_buffer: Default::default(),
         }
     }
 
@@ -164,6 +166,8 @@ impl AudioSystem {
     }
 
     pub fn clear(&self) {
+        self.audio_consumer.lock().unwrap().clear();
+
         *(self.status.lock().unwrap()) = AudioStatus::Idle;
         *(self.selected_app.lock().unwrap()) = None;
 
@@ -268,6 +272,8 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
             let producer = audio.audio_producer.clone();
             let status = audio.status.clone();
             let pulse = audio.pulse.clone();
+
+            let meter_buffer = audio.meter_buffer.clone();
             let meter = audio.meter.clone();
 
             // Update applications periodically
@@ -328,6 +334,30 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                 })
                 .unwrap();
 
+            thread::Builder::new()
+                .name("audio-analysis".to_string())
+                .spawn({
+                    let meter_buffer = meter_buffer.clone();
+
+                    move || loop {
+                        thread::sleep(Duration::from_millis(2));
+
+                        let mut meter_buffer = meter_buffer.lock();
+                        let buffer_len = meter_buffer.len();
+
+                        // Ensure the analyser does not try to read misaligned floats
+                        let remainder = buffer_len % SAMPLE_IN_BYTES * 2;
+                        let safe_range = ..buffer_len - remainder;
+
+                        let mut samples = raw_samples_from_bytes(&meter_buffer[safe_range]);
+                        samples.resize(BUFFER_SIZE, 0.);
+
+                        meter.process(&samples);
+                        meter_buffer.drain(safe_range);
+                    }
+                })
+                .unwrap();
+
             loop {
                 while let Ok(event) = receiver.try_recv() {
                     match event {
@@ -342,23 +372,18 @@ fn run_audio_thread(audio: Arc<AudioSystem>) {
                     }
                 }
 
-                // Read audio into buffer
+                // Read audio into buffers
                 if let Some(stdout) = stdout.as_mut() {
-                    let mut producer = producer.lock().unwrap();
                     let mut buf = [0; BUFFER_SIZE];
 
                     let read = stdout.read(&mut buf).unwrap_or_default();
                     let new_bytes = &buf[..read];
 
-                    producer.push_slice(new_bytes);
-
-                    let samples = raw_samples_from_bytes(&buf);
-                    meter.process(&samples);
+                    producer.lock().unwrap().push_slice(new_bytes);
+                    meter_buffer.lock().extend_from_slice(new_bytes);
                 }
 
-                if stdout.is_none() {
-                    thread::sleep(Duration::from_millis(1));
-                }
+                thread::sleep(Duration::from_millis(1));
             }
         })
         .unwrap();
