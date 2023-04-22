@@ -16,6 +16,7 @@ impl Meter {
     }
 
     fn render_meter(&self, value: f32, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+        let value = value.min(1.);
         let bar_width = area.width as f32 * value;
 
         let amount_of_full_characters = bar_width.floor() as usize;
