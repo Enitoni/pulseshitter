@@ -185,6 +185,9 @@ pub struct AudioStream(AudioConsumer);
 
 impl AudioStream {
     pub fn into_input(self) -> Input {
+        // Clear the stream to minimize latency
+        self.0.lock().unwrap().clear();
+
         Input::new(
             true,
             Reader::Extension(Box::new(self)),
@@ -198,18 +201,13 @@ impl AudioStream {
 impl Read for AudioStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut consumer = self.0.lock().unwrap();
-        let mut read = 0;
 
-        loop {
-            if read == buf.len() {
-                break;
-            }
+        let stereo = SAMPLE_IN_BYTES * 2;
+        let safe_length = buf.len() / stereo * stereo;
 
-            read += consumer.read(&mut buf[read..]).unwrap_or_default();
-            thread::sleep(Duration::from_millis(1));
-        }
+        consumer.read(&mut buf[..safe_length]).unwrap_or_default();
 
-        Ok(buf.len())
+        Ok(safe_length)
     }
 }
 

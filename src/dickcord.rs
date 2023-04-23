@@ -13,7 +13,7 @@ use serenity::model::user::CurrentUser;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use songbird::error::JoinError;
-use songbird::SerenityInit;
+use songbird::{Call, SerenityInit};
 use tokio::runtime::Runtime;
 
 /// Main Discord connection state managing
@@ -91,22 +91,48 @@ struct Bot {
 }
 
 impl Bot {
-    async fn connect_and_stream(&self, context: Context, channel: GuildChannel) {
-        {
-            *(self.status.lock().unwrap()) = DiscordStatus::Joining(channel.clone());
-        }
+    const MAX_RETRIES: usize = 5;
 
-        let manager = songbird::get(&context).await.unwrap();
+    async fn connect_and_stream(&self, context: Context, channel: GuildChannel) {
+        let mut retries = 0;
+
+        loop {
+            let result = self.connect(&context, &channel).await;
+
+            match result {
+                Ok(call) => {
+                    call.lock()
+                        .await
+                        .play_only_source(self.audio_stream.clone().into_input());
+
+                    *self.status.lock().unwrap() = DiscordStatus::Active(channel.clone());
+                    break;
+                }
+                Err(why) => {
+                    *self.status.lock().unwrap() =
+                        DiscordStatus::Failed(DiscordError::Songbird(why));
+
+                    if retries >= Self::MAX_RETRIES {
+                        break;
+                    }
+
+                    retries += 1;
+                }
+            }
+        }
+    }
+
+    async fn connect(
+        &self,
+        context: &Context,
+        channel: &GuildChannel,
+    ) -> Result<Arc<tokio::sync::Mutex<Call>>, JoinError> {
+        *self.status.lock().unwrap() = DiscordStatus::Joining(channel.clone());
+
+        let manager = songbird::get(context).await.unwrap();
         let (handler, result) = manager.join(channel.guild_id, channel.id).await;
 
-        if let Err(why) = result {
-            *(self.status.lock().unwrap()) = DiscordStatus::Failed(DiscordError::Songbird(why));
-        }
-
-        let mut call = handler.lock().await;
-        call.play_source(self.audio_stream.clone().into_input());
-
-        *(self.status.lock().unwrap()) = DiscordStatus::Active(channel.clone());
+        result.map(|_| handler)
     }
 }
 
@@ -130,7 +156,7 @@ impl EventHandler for Bot {
         if let Some((old_member, guild_id)) = old.and_then(|a| a.member.zip(a.guild_id)) {
             if old_member.user.id == self.user_id {
                 let manager = songbird::get(&context).await.unwrap();
-                let _ = manager.leave(guild_id).await;
+                let _ = manager.remove(guild_id).await;
             }
         }
 
