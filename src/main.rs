@@ -13,9 +13,9 @@ use interface::{
     setup::SetupView,
     View,
 };
-use state::Config;
 
 use crate::audio::AudioSystem;
+use state::Config;
 
 mod audio;
 mod dickcord;
