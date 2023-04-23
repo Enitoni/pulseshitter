@@ -7,9 +7,9 @@ use tui::{
 };
 
 use crate::{
+    audio::pulse::PulseAudio,
     audio::{AudioLatency, AudioTime, CurrentAudioStatus, SelectedApp},
     dickcord::{CurrentDiscordStatus, CurrentDiscordUser},
-    pulse::PulseAudio,
     Action,
 };
 
