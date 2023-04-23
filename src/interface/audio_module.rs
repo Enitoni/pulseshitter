@@ -9,8 +9,8 @@ use tui::{
 };
 
 use crate::{
+    audio::pulse::PulseAudio,
     audio::{AudioError, AudioLatency, AudioStatus, AudioTime, CurrentAudioStatus},
-    pulse::PulseAudio,
 };
 
 use super::animation::{self, AnimatedSpan, Animation};

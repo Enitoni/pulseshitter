@@ -1,8 +1,8 @@
 use self::analysis::{spawn_analysis_thread, StereoMeter};
 use self::parec::{spawn_event_thread, spawn_parec, Stderr};
-use crate::pulse::{Application, PulseAudio};
 use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::{unbounded, Receiver, Sender};
+use pulse::{Application, PulseAudio};
 use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
 use songbird::input::reader::MediaSource;
 use songbird::input::{Codec, Container, Input, Reader};
@@ -15,6 +15,7 @@ use std::time::Duration;
 
 mod analysis;
 mod parec;
+pub mod pulse;
 
 pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
 pub type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;

@@ -7,10 +7,10 @@ use tui::{
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
+use crate::audio::pulse::PulseAudio;
 use crate::{
     audio::SelectedApp,
     dickcord::{CurrentDiscordStatus, DiscordStatus},
-    pulse::PulseAudio,
     Action,
 };
 

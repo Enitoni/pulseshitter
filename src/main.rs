@@ -3,6 +3,7 @@ use std::{
     thread,
 };
 
+use audio::pulse::{Application, PulseAudio};
 use audio::spawn_audio_thread;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::Discord;
@@ -12,7 +13,6 @@ use interface::{
     setup::SetupView,
     View,
 };
-use pulse::{Application, PulseAudio};
 use state::Config;
 
 use crate::audio::AudioSystem;
@@ -20,7 +20,6 @@ use crate::audio::AudioSystem;
 mod audio;
 mod dickcord;
 mod interface;
-mod pulse;
 mod state;
 
 pub struct App {

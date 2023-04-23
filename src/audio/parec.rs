@@ -1,4 +1,4 @@
-use crate::pulse::Application;
+use super::pulse::Application;
 
 use super::{AudioError, AudioMessage, AudioStatus, AudioSystem};
 use lazy_static::lazy_static;
