@@ -3,6 +3,7 @@ use std::{
     thread,
 };
 
+use audio::spawn_audio_thread;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::Discord;
 use interface::{
@@ -43,7 +44,7 @@ impl App {
         let config = Config::restore();
         let (action_sender, action_receiver) = unbounded();
 
-        AudioSystem::run(audio.clone());
+        spawn_audio_thread(audio.clone());
 
         // Existing setup
         if let Some(config) = config {

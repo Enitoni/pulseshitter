@@ -125,10 +125,6 @@ impl AudioSystem {
         }
     }
 
-    pub fn run(audio: Arc<AudioSystem>) {
-        run_audio_thread(audio);
-    }
-
     pub fn set_application(&self, app: Application) {
         *(self.selected_app.lock().unwrap()) = Some(app.clone());
         *(self.status.lock().unwrap()) = AudioStatus::Connecting(app.clone());
@@ -233,59 +229,61 @@ impl MediaSource for AudioStream {
     }
 }
 
-fn run_audio_thread(audio: Arc<AudioSystem>) {
-    thread::Builder::new()
-        .name("audio".to_string())
-        .spawn(move || {
-            let mut stdout = None;
-            let stderr = Stderr::default();
+pub fn spawn_audio_thread(audio: Arc<AudioSystem>) {
+    let run = move || {
+        let mut stdout = None;
+        let stderr = Stderr::default();
 
-            let receiver = audio.receiver.clone();
-            let producer = audio.audio_producer.clone();
-            let pulse = audio.pulse.clone();
+        let receiver = audio.receiver.clone();
+        let producer = audio.audio_producer.clone();
+        let pulse = audio.pulse.clone();
 
-            let meter_buffer = audio.meter_buffer.clone();
-            let time_to_wait = 1. / SAMPLE_RATE as f32;
+        let meter_buffer = audio.meter_buffer.clone();
+        let time_to_wait = 1. / SAMPLE_RATE as f32;
 
-            spawn_event_thread(audio.clone(), stderr.clone());
-            spawn_analysis_thread(audio);
+        spawn_event_thread(audio.clone(), stderr.clone());
+        spawn_analysis_thread(audio);
 
-            // Update applications periodically
-            thread::Builder::new()
-                .name("pulse-app-polling".to_string())
-                .spawn(move || loop {
-                    pulse.update_applications();
-                    thread::sleep(Duration::from_secs(1));
-                })
-                .unwrap();
+        // Update applications periodically
+        thread::Builder::new()
+            .name("pulse-app-polling".to_string())
+            .spawn(move || loop {
+                pulse.update_applications();
+                thread::sleep(Duration::from_secs(1));
+            })
+            .unwrap();
 
-            loop {
-                while let Ok(event) = receiver.try_recv() {
-                    match event {
-                        AudioMessage::StreamSpawned(new_stdout, new_stderr) => {
-                            stdout = Some(new_stdout);
-                            *(stderr.lock()) = Some(BufReader::new(new_stderr));
-                        }
-                        AudioMessage::Clear => {
-                            stdout = None;
-                            *(stderr.lock()) = None;
-                        }
+        loop {
+            while let Ok(event) = receiver.try_recv() {
+                match event {
+                    AudioMessage::StreamSpawned(new_stdout, new_stderr) => {
+                        stdout = Some(new_stdout);
+                        *(stderr.lock()) = Some(BufReader::new(new_stderr));
+                    }
+                    AudioMessage::Clear => {
+                        stdout = None;
+                        *(stderr.lock()) = None;
                     }
                 }
-
-                // Read audio into buffers
-                if let Some(stdout) = stdout.as_mut() {
-                    let mut buf = [0; BUFFER_SIZE];
-
-                    let bytes_read = stdout.read(&mut buf).unwrap_or_default();
-                    let new_bytes = &buf[..bytes_read];
-
-                    producer.lock().unwrap().push_slice(new_bytes);
-                    meter_buffer.lock().extend_from_slice(new_bytes);
-                }
-
-                thread::sleep(Duration::from_secs_f32(time_to_wait));
             }
-        })
+
+            // Read audio into buffers
+            if let Some(stdout) = stdout.as_mut() {
+                let mut buf = [0; BUFFER_SIZE];
+
+                let bytes_read = stdout.read(&mut buf).unwrap_or_default();
+                let new_bytes = &buf[..bytes_read];
+
+                producer.lock().unwrap().push_slice(new_bytes);
+                meter_buffer.lock().extend_from_slice(new_bytes);
+            }
+
+            thread::sleep(Duration::from_secs_f32(time_to_wait));
+        }
+    };
+
+    thread::Builder::new()
+        .name("audio".to_string())
+        .spawn(run)
         .unwrap();
 }
