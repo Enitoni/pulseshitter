@@ -27,11 +27,12 @@ const ALLOW_SPOTIFY_STREAMING: Option<&'static str> = option_env!("ALLOW_SPOTIFY
 const SPOTIFY_NAME: &str = "spotify";
 
 /// This is a list of known vague names that applications will use for their audio sources.
-const VAGUE_NAMES: [&str; 4] = [
-    "audioStream",
-    "playStream",
+const VAGUE_NAMES: [&str; 5] = [
     "Playback",
+    "playStream",
+    "audioStream",
     "WEBRTC VoiceEngine",
+    "AudioCallbackDriver",
 ];
 
 /// Abstracts pulseaudio/pipewire related implementations
@@ -229,6 +230,12 @@ impl From<RawSource> for Source {
         })
         .collect();
 
+        let all_props: Vec<_> = raw
+            .proplist
+            .iter()
+            .filter_map(|k| raw.proplist.get_str(&k).map(|v| (k, v)))
+            .collect();
+
         // Favor capitalized app names
         name_candidates.sort_by(|a, _| {
             if str_is_lowercase(a) {
@@ -240,6 +247,10 @@ impl From<RawSource> for Source {
 
         let kind = SourceKind::parse(&name_candidates);
         let name = kind.determine_name(&name_candidates);
+
+        if name == "Unknown firefox tab" {
+            dbg!(&all_props);
+        }
 
         Self {
             kind,
