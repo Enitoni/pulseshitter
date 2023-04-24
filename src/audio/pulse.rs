@@ -26,7 +26,7 @@ type RawSource = pulsectl::controllers::types::ApplicationInfo;
 ///
 /// If you don't care about this, you can compile pulseshitter with the environment variable below present to enable it anyway.
 const ALLOW_SPOTIFY_STREAMING: Option<&'static str> = option_env!("ALLOW_SPOTIFY_STREAMING");
-const SPOTIFY_NAME: &str = "spotify";
+const SPOTIFY_NAME: &str = "Spotify";
 
 // These are words commonly used in vague source names that is not useful to the user
 const VAGUE_WORDS: [&str; 10] = [
@@ -355,7 +355,10 @@ impl SourceManager {
         let parsed_incoming: Vec<_> = incoming
             .into_iter()
             .map(Source::from)
-            .filter(|s| ALLOW_SPOTIFY_STREAMING.is_some() || s.name() != SPOTIFY_NAME)
+            .filter(|s| {
+                ALLOW_SPOTIFY_STREAMING.is_some()
+                    || s.name().to_uppercase() != SPOTIFY_NAME.to_uppercase()
+            })
             .collect();
 
         let mut existing_sources = self.0.lock();
