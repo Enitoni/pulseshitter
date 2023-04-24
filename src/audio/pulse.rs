@@ -376,6 +376,7 @@ impl SourceManager {
             }
         }
 
+        existing_sources.sort_by(|a, b| b.age.load().cmp(&a.age.load()));
         existing_sources.retain(|s| !s.is_dead())
     }
 

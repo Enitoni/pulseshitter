@@ -1,5 +1,4 @@
-use std::sync::{Mutex};
-
+use std::sync::Mutex;
 
 use crossterm::event::{Event, KeyCode};
 use tui::{
@@ -7,11 +6,8 @@ use tui::{
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::{AppContext};
-use crate::{
-    dickcord::{DiscordStatus},
-    Action,
-};
+use crate::AppContext;
+use crate::{dickcord::DiscordStatus, Action};
 
 use super::ViewController;
 
@@ -115,8 +111,10 @@ impl Widget for &AppSelector {
                 DISABLE_COLOR
             } else if is_active {
                 ACTIVE_COLOR
-            } else {
+            } else if source.available() {
                 IDLE_COLOR
+            } else {
+                UNAVAILABLE_COLOR
             };
 
             let paragraph = Paragraph::new(format!("{} {}", symbol, source.name()))
@@ -156,3 +154,4 @@ const ACTIVE_SYMBOL: &str = "►";
 const ACTIVE_COLOR: Color = Color::Green;
 const IDLE_COLOR: Color = Color::Reset;
 const DISABLE_COLOR: Color = Color::DarkGray;
+const UNAVAILABLE_COLOR: Color = Color::Yellow;
