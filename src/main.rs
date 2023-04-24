@@ -4,10 +4,7 @@ use std::{
 };
 
 use audio::spawn_audio_thread;
-use audio::{
-    pulse::{Source},
-    AudioContext,
-};
+use audio::{pulse::Source, AudioContext};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::{Discord, DiscordContext};
 use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
