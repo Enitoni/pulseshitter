@@ -1,16 +1,13 @@
-use std::sync::Arc;
 
-use crossbeam::channel::Sender;
+
+
 use tui::{
     layout::{Constraint, Direction, Layout},
     widgets::Widget,
 };
 
 use crate::{
-    audio::pulse::PulseAudio,
-    audio::{AudioLatency, AudioTime, CurrentAudioStatus, SelectedApp},
-    dickcord::{CurrentDiscordStatus, CurrentDiscordUser},
-    Action,
+    AppContext,
 };
 
 use super::{
@@ -24,33 +21,12 @@ pub struct DashboardView {
     discord_module: DiscordModule,
 }
 
-pub struct DashboardViewContext {
-    pub pulse: Arc<PulseAudio>,
-    pub selected_app: SelectedApp,
-    pub actions: Sender<Action>,
-    pub audio_status: CurrentAudioStatus,
-    pub discord_status: CurrentDiscordStatus,
-    pub discord_user: CurrentDiscordUser,
-    pub latency: AudioLatency,
-    pub time: AudioTime,
-}
-
 impl DashboardView {
-    pub fn new(context: DashboardViewContext) -> Self {
+    pub fn new(context: AppContext) -> Self {
         Self {
-            app_selector: AppSelector::new(
-                context.pulse.clone(),
-                context.discord_status.clone(),
-                context.selected_app,
-                context.actions,
-            ),
-            audio_module: AudioModule::new(
-                context.audio_status,
-                context.pulse,
-                context.time,
-                context.latency,
-            ),
-            discord_module: DiscordModule::new(context.discord_user, context.discord_status),
+            app_selector: AppSelector::new(context.clone()),
+            audio_module: AudioModule::new(context.audio.clone()),
+            discord_module: DiscordModule::new(context.discord),
         }
     }
 }

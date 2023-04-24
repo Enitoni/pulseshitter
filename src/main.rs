@@ -3,16 +3,14 @@ use std::{
     thread,
 };
 
-use audio::pulse::{Application, PulseAudio};
 use audio::spawn_audio_thread;
-use crossbeam::channel::{unbounded, Receiver, Sender};
-use dickcord::Discord;
-use interface::{
-    dashboard::{DashboardView, DashboardViewContext},
-    run_ui,
-    setup::SetupView,
-    View,
+use audio::{
+    pulse::{Source},
+    AudioContext,
 };
+use crossbeam::channel::{unbounded, Receiver, Sender};
+use dickcord::{Discord, DiscordContext};
+use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
 
 use crate::audio::AudioSystem;
 use state::Config;
@@ -25,7 +23,6 @@ mod state;
 pub struct App {
     config: Arc<Mutex<Option<Config>>>,
 
-    pulse: Arc<PulseAudio>,
     audio: Arc<AudioSystem>,
     discord: Discord,
 
@@ -34,37 +31,44 @@ pub struct App {
     pub action_receiver: Receiver<Action>,
 }
 
+#[derive(Clone)]
+pub struct AppContext {
+    actions: Sender<Action>,
+
+    pub discord: DiscordContext,
+    pub audio: AudioContext,
+}
+
+impl AppContext {
+    pub fn dispatch_action(&self, action: Action) {
+        self.actions.send(action).expect("send action")
+    }
+}
+
 impl App {
     fn new() -> Self {
         let discord = Discord::default();
-        let pulse = Arc::new(PulseAudio::new());
-        let audio = Arc::new(AudioSystem::new(pulse.clone()));
+        let audio = Arc::new(AudioSystem::new());
 
         let config = Config::restore();
         let (action_sender, action_receiver) = unbounded();
 
         spawn_audio_thread(audio.clone());
 
+        let context = AppContext {
+            actions: action_sender.clone(),
+            discord: discord.context(),
+            audio: audio.context(),
+        };
+
         // Existing setup
         if let Some(config) = config {
             discord.connect(audio.stream(), config.clone(), action_sender.clone());
 
-            let dashboard_context = DashboardViewContext {
-                pulse: pulse.clone(),
-                actions: action_sender.clone(),
-                audio_status: audio.status.clone(),
-                discord_status: discord.status.clone(),
-                discord_user: discord.current_user.clone(),
-                selected_app: audio.selected_app.clone(),
-                latency: audio.latency.clone(),
-                time: audio.time.clone(),
-            };
-
-            let dashboard_view = DashboardView::new(dashboard_context);
+            let dashboard_view = DashboardView::new(context);
 
             return Self {
                 audio,
-                pulse,
                 discord,
                 action_sender,
                 action_receiver,
@@ -82,7 +86,6 @@ impl App {
             action_receiver,
             action_sender,
             discord,
-            pulse,
             audio,
         }
     }
@@ -110,30 +113,27 @@ impl App {
 
                 let mut view = self.current_view.lock().unwrap();
 
-                let dashboard_context = DashboardViewContext {
-                    pulse: self.pulse.clone(),
-                    actions: self.action_sender.clone(),
-                    audio_status: self.audio.status.clone(),
-                    discord_status: self.discord.status.clone(),
-                    selected_app: self.audio.selected_app.clone(),
-                    discord_user: self.discord.current_user.clone(),
-                    latency: self.audio.latency.clone(),
-                    time: self.audio.time.clone(),
-                };
-
-                let dashboard_view = DashboardView::new(dashboard_context);
+                let dashboard_view = DashboardView::new(self.context());
                 *view = View::Dashboard(dashboard_view);
             }
             Action::StopStream => self.audio.clear(),
-            Action::SetApplication(app) => self.audio.set_application(app),
+            Action::SetAudioSource(app) => self.audio.set_source(app),
             Action::Exit => self.discord.disconnect(),
         };
+    }
+
+    pub fn context(&self) -> AppContext {
+        AppContext {
+            actions: self.action_sender.clone(),
+            discord: self.discord.context(),
+            audio: self.audio.context(),
+        }
     }
 }
 
 pub enum Action {
     SetConfig(Config),
-    SetApplication(Application),
+    SetAudioSource(Source),
     StopStream,
     Activate,
     Exit,

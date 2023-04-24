@@ -1,4 +1,4 @@
-use super::pulse::Application;
+use super::pulse::{Device, Source};
 
 use super::{AudioError, AudioMessage, AudioStatus, AudioSystem};
 use lazy_static::lazy_static;
@@ -24,6 +24,7 @@ lazy_static! {
         Regex::new(r"Time: (\d+\.\d+) sec; Latency: (\d+) usec.").unwrap();
 }
 
+#[derive(Debug)]
 pub enum ParecEvent {
     TimedOut,
     /// Device name, index
@@ -64,24 +65,24 @@ impl ParecEvent {
     }
 
     /// Returns true if Parec moved or connected to a different stream
-    pub fn is_invalid(&self, correct_device: &str) -> bool {
+    pub fn is_invalid(&self, correct_device: &Device) -> bool {
         match self {
-            Self::Connected(device, _) => !device.contains(correct_device),
+            Self::Connected(device, _) => !device.contains(&correct_device.id()),
             Self::StreamMoved => true,
             _ => false,
         }
     }
 }
 
-pub fn spawn_parec(device: String, app: Application) -> Result<Child, AudioError> {
+pub fn spawn_parec(device: Device, source: Source) -> Result<Child, AudioError> {
     Command::new("parec")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .arg("--verbose")
         .arg("--device")
-        .arg(device)
+        .arg(device.id())
         .arg("--monitor-stream")
-        .arg(app.sink_input_index.to_string())
+        .arg(source.input_index().to_string())
         .arg("--format=float32le")
         .arg("--rate=48000")
         .arg("--channels=2")
@@ -117,7 +118,7 @@ pub fn spawn_event_thread(audio: Arc<AudioSystem>, stderr: Stderr) {
     let run = move || {
         let sender = audio.sender.clone();
         let status = audio.status.clone();
-        let device = audio.pulse.device_name();
+        let device = audio.pulse.current_device();
 
         loop {
             let event = stderr.try_lock().and_then(|mut f| {
@@ -136,10 +137,10 @@ pub fn spawn_event_thread(audio: Arc<AudioSystem>, stderr: Stderr) {
             };
 
             let handle_connected = || {
-                let application = audio.selected_app.lock().unwrap();
+                let source = audio.pulse.current_source();
 
-                if let Some(app) = &*application {
-                    *(status.lock().unwrap()) = AudioStatus::Connected(app.to_owned());
+                if let Some(source) = source {
+                    *(status.lock().unwrap()) = AudioStatus::Connected(source);
                 }
             };
 
