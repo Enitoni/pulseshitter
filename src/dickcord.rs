@@ -9,7 +9,7 @@ use serenity::async_trait;
 use serenity::client::bridge::gateway::ShardManager;
 use serenity::futures::future::{join_all, try_join_all};
 use serenity::model::gateway::Ready;
-use serenity::model::prelude::{ChannelId, ChannelType, GuildChannel, GuildId, Member};
+use serenity::model::prelude::{ChannelType, GuildChannel, GuildId};
 use serenity::model::user::CurrentUser;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
@@ -194,22 +194,20 @@ impl EventHandler for Bot {
     }
 
     async fn voice_state_update(&self, context: Context, _: Option<VoiceState>, new: VoiceState) {
-        let unnest = |((a, b), c)| (a, b, c);
-        let is_target = |(m, _, _): &(Member, ChannelId, GuildId)| m.user.id == self.user_id;
-
         let in_old_channel = match &*self.status.lock().unwrap() {
             DiscordStatus::Active(channel) => Some(channel.to_owned()),
             _ => None,
         }
         .map(|c| (c.id, c.guild_id));
 
-        let in_new_channel = new
-            .member
-            .zip(new.channel_id)
-            .zip(new.guild_id)
-            .map(unnest)
-            .filter(is_target)
-            .map(|(_, c, g)| (c, g));
+        let in_new_channel = new.channel_id.zip(new.guild_id);
+
+        // This user is not relevant
+        if let Some(member) = new.member {
+            if member.user.id != self.user_id {
+                return;
+            }
+        }
 
         // Target left a channel
         if let (Some((_, guild)), None) = &(in_old_channel, in_new_channel) {
