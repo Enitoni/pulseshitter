@@ -67,7 +67,7 @@ pub enum AudioStatus {
     Idle,
     Connecting(Source),
     Connected(Source),
-    Searching(Source),
+    Searching,
     Failed(AudioError),
 }
 
@@ -123,6 +123,8 @@ impl AudioSystem {
 
     pub fn set_source(&self, source: Source) {
         self.pulse.set_current_source(source.clone());
+        self.pulse.set_selected_source(source.clone());
+
         *(self.status.lock().unwrap()) = AudioStatus::Connecting(source.clone());
 
         match spawn_parec(self.pulse.current_device(), source) {
@@ -158,6 +160,13 @@ impl AudioSystem {
         }
 
         self.sender.send(AudioMessage::Clear).unwrap();
+    }
+
+    fn invalid(&self) {
+        *(self.status.lock().unwrap()) = AudioStatus::Searching;
+
+        self.sender.send(AudioMessage::Clear).unwrap();
+        self.pulse.invalid();
     }
 
     pub fn stream(&self) -> AudioStream {

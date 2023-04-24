@@ -1,6 +1,6 @@
 use super::pulse::{Device, Source};
 
-use super::{AudioError, AudioMessage, AudioStatus, AudioSystem};
+use super::{AudioError, AudioStatus, AudioSystem};
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use regex::Regex;
@@ -116,7 +116,6 @@ pub fn read_from_parec_stderr(buffer: &mut BufReader<ChildStderr>) -> Option<Str
 /// Handle Parec's events and make corrections when a stream becomes invalid
 pub fn spawn_event_thread(audio: Arc<AudioSystem>, stderr: Stderr) {
     let run = move || {
-        let sender = audio.sender.clone();
         let status = audio.status.clone();
         let device = audio.pulse.current_device();
 
@@ -146,7 +145,7 @@ pub fn spawn_event_thread(audio: Arc<AudioSystem>, stderr: Stderr) {
 
             if let Some(event) = event {
                 if event.is_invalid(&device) {
-                    sender.send(AudioMessage::Clear).unwrap();
+                    audio.invalid();
                 }
 
                 match event {
