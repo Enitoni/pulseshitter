@@ -349,7 +349,7 @@ impl From<BrowserKind> for SourceKind {
 struct SourceManager(Mutex<Vec<Source>>);
 
 impl SourceManager {
-    const MINIMUM_RESTORE_SCORE: f64 = 1.8;
+    const MINIMUM_RESTORE_SCORE: f64 = 1.6;
 
     fn update(&self, incoming: Vec<RawSource>) {
         let parsed_incoming: Vec<_> = incoming
