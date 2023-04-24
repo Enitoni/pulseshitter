@@ -65,7 +65,7 @@ Yes. Please make a GitHub issue if you want to report a bug or suggest a feature
 
 ### prerequisites
 
-- [rust]((https://www.rust-lang.org/))
+- [rust](https://www.rust-lang.org/)
 - pulseaudio / pipewire
 - libopus
 
