@@ -25,7 +25,7 @@ this overengineered project is a workaround to make it possible to share audio v
 ## caveats
 
 - you need a bot in a server to use it
-- linux audio sources are very inconsistent so it's not guaranteed it will reconnect properly, or even show a meaningful name, but you can always just select the app you wan to stream again
+- linux audio sources are very inconsistent so it's not guaranteed it will reconnect properly, or even show a meaningful name, but you can always just select the app you want to stream again
 
 ## usage
 
@@ -64,6 +64,7 @@ Yes. Please make a GitHub issue if you want to report a bug or suggest a feature
 ## build
 
 ### prerequisites
+
 - [rust]((https://www.rust-lang.org/))
 - pulseaudio / pipewire
 - libopus
