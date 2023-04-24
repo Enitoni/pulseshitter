@@ -27,12 +27,13 @@ const ALLOW_SPOTIFY_STREAMING: Option<&'static str> = option_env!("ALLOW_SPOTIFY
 const SPOTIFY_NAME: &str = "spotify";
 
 /// This is a list of known vague names that applications will use for their audio sources.
-const VAGUE_NAMES: [&str; 5] = [
+const VAGUE_NAMES: [&str; 6] = [
     "Playback",
     "playStream",
     "audioStream",
     "WEBRTC VoiceEngine",
     "AudioCallbackDriver",
+    "Audio Stream",
 ];
 
 /// Abstracts pulseaudio/pipewire related implementations
