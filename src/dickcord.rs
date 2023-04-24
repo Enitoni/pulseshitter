@@ -176,22 +176,21 @@ impl EventHandler for Bot {
         }
     }
 
-    async fn voice_state_update(&self, context: Context, old: Option<VoiceState>, new: VoiceState) {
-        if let Some((old_member, guild_id)) = old.and_then(|a| a.member.zip(a.guild_id)) {
-            let is_target = old_member.user.id == self.user_id;
-            let is_streaming = new.self_stream.unwrap_or_default();
-
-            if is_target && !is_streaming {
-                let manager = songbird::get(&context).await.unwrap();
-                let _ = manager.remove(guild_id).await;
-            }
-        }
-
-        if let Some((member, channel_id)) = new.member.zip(new.channel_id) {
+    async fn voice_state_update(&self, context: Context, _: Option<VoiceState>, new: VoiceState) {
+        if let Some(((member, channel_id), guild_id)) =
+            new.member.zip(new.channel_id).zip(new.guild_id)
+        {
             let is_target = member.user.id == self.user_id;
             let is_streaming = new.self_stream.unwrap_or_default();
 
-            if !(is_target && is_streaming) {
+            if !is_target {
+                return;
+            }
+
+            if !is_streaming {
+                let manager = songbird::get(&context).await.unwrap();
+                let _ = manager.remove(guild_id).await;
+
                 return;
             }
 
