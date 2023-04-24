@@ -124,6 +124,7 @@ impl AudioSystem {
     pub fn set_source(&self, source: Source) {
         self.pulse.set_current_source(source.clone());
         self.pulse.set_selected_source(source.clone());
+        self.audio_consumer.lock().unwrap().clear();
 
         *(self.status.lock().unwrap()) = AudioStatus::Connecting(source.clone());
 

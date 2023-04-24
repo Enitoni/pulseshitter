@@ -8,7 +8,7 @@ use crossbeam::channel::Sender;
 use serenity::async_trait;
 use serenity::client::bridge::gateway::ShardManager;
 use serenity::model::gateway::Ready;
-use serenity::model::prelude::{ChannelType, GuildChannel, GuildId};
+use serenity::model::prelude::GuildChannel;
 use serenity::model::user::CurrentUser;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
@@ -162,18 +162,13 @@ impl Bot {
 
 #[async_trait]
 impl EventHandler for Bot {
-    async fn ready(&self, context: Context, ready: Ready) {
+    async fn ready(&self, _: Context, ready: Ready) {
         {
             *(self.status.lock().unwrap()) = DiscordStatus::Connected;
-            *(self.user.lock().unwrap()) = Some(ready.user.clone());
+            *(self.user.lock().unwrap()) = Some(ready.user);
         }
 
         self.actions.send(Action::Activate).unwrap();
-        let guilds = context.cache.guilds();
-
-        if let Some(channel) = find_voice_channel(&context, self.user_id, guilds.clone()).await {
-            self.connect_and_stream(context, channel).await;
-        }
     }
 
     async fn voice_state_update(&self, context: Context, _: Option<VoiceState>, new: VoiceState) {
@@ -199,30 +194,6 @@ impl EventHandler for Bot {
             }
         }
     }
-}
-
-async fn find_voice_channel(
-    context: &Context,
-    user_id: u64,
-    guilds: Vec<GuildId>,
-) -> Option<GuildChannel> {
-    for guild in guilds {
-        let channels = guild.channels(context).await.unwrap();
-
-        for channel in channels {
-            let channel = channel.1;
-
-            if matches!(channel.kind, ChannelType::Voice) {
-                for member in channel.members(context).await.unwrap() {
-                    if member.user.id == user_id {
-                        return Some(channel.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    None
 }
 
 /// A Discord client that can be stopped by dropping it
