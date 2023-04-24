@@ -1,6 +1,8 @@
 use crossbeam::atomic::AtomicCell;
+use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use pulsectl::controllers::{AppControl, DeviceControl};
+use regex::Regex;
 use std::{
     cmp::Ordering,
     fmt::Display,
@@ -26,15 +28,10 @@ type RawSource = pulsectl::controllers::types::ApplicationInfo;
 const ALLOW_SPOTIFY_STREAMING: Option<&'static str> = option_env!("ALLOW_SPOTIFY_STREAMING");
 const SPOTIFY_NAME: &str = "spotify";
 
-/// This is a list of known vague names that applications will use for their audio sources.
-const VAGUE_NAMES: [&str; 7] = [
-    "Playback",
-    "playStream",
-    "audioStream",
-    "Audio Stream",
-    "Playback Stream",
-    "WEBRTC VoiceEngine",
-    "AudioCallbackDriver",
+// These are words commonly used in vague source names that is not useful to the user
+const VAGUE_WORDS: [&str; 10] = [
+    "play", "audio", "voice", "stream", "driver", "webrtc", "engine", "playback", "callback",
+    "alsa",
 ];
 
 /// Abstracts pulseaudio/pipewire related implementations
@@ -240,27 +237,20 @@ impl Source {
 impl From<RawSource> for Source {
     fn from(raw: RawSource) -> Self {
         let mut name_candidates: Vec<_> = [
+            raw.name,
             raw.proplist.get_str("application.name"),
             raw.proplist.get_str("application.process.binary"),
             raw.proplist.get_str("media.name"),
-            raw.name,
         ]
         .into_iter()
         .flatten()
-        .filter(|n| {
-            !VAGUE_NAMES
-                .iter()
-                .any(|s| s.to_lowercase() == n.to_lowercase())
-        })
         .collect();
 
-        // Favor capitalized app names
-        name_candidates.sort_by(|a, _| {
-            if str_is_lowercase(a) {
-                Ordering::Greater
-            } else {
-                Ordering::Less
-            }
+        name_candidates.sort_by(|a, b| {
+            let a_score = calculate_name_quality(a);
+            let b_score = calculate_name_quality(b);
+
+            b_score.cmp(&a_score)
         });
 
         let kind = SourceKind::parse(&name_candidates);
@@ -422,8 +412,45 @@ impl SourceManager {
     }
 }
 
-fn str_is_lowercase(str: &str) -> bool {
-    str.chars().all(|c| c.is_lowercase())
+lazy_static! {
+    static ref WORD_SPLIT_REGEX: Regex =
+        Regex::new(r"([^.,\-_\sA-Z]+)|([^.,\-_\sa-z][^.\sA-Z]+)").unwrap();
+}
+
+fn str_is_doublecase(str: &str) -> bool {
+    str.chars().filter(|c| c.is_lowercase()).count() < str.len()
+}
+
+fn calculate_name_quality(str: &str) -> i32 {
+    let mut score = 0;
+
+    score += str_is_doublecase(str) as i32;
+
+    let words: Vec<_> = WORD_SPLIT_REGEX
+        .captures(str)
+        .map(|captures| {
+            captures
+                .iter()
+                .skip(1)
+                .flatten()
+                .map(|m| m.as_str())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    score += words.into_iter().fold(0, |acc, w| {
+        let is_vague = VAGUE_WORDS
+            .iter()
+            .any(|word| w.to_uppercase() == word.to_uppercase());
+
+        if is_vague {
+            acc - 1
+        } else {
+            acc + 1
+        }
+    });
+
+    score
 }
 
 pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
