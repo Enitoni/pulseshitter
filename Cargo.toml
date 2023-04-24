@@ -7,6 +7,10 @@ edition = "2021"
 inherits = "release"
 debug = true
 
+[profile.release]
+lto = true
+codegen-units = 1
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
