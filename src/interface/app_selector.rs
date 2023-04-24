@@ -1,81 +1,68 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Mutex};
 
-use crossbeam::channel::Sender;
+
 use crossterm::event::{Event, KeyCode};
 use tui::{
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::audio::pulse::PulseAudio;
+use crate::{AppContext};
 use crate::{
-    audio::SelectedApp,
-    dickcord::{CurrentDiscordStatus, DiscordStatus},
+    dickcord::{DiscordStatus},
     Action,
 };
 
 use super::ViewController;
 
 pub struct AppSelector {
-    pulse: Arc<PulseAudio>,
-    discord_status: CurrentDiscordStatus,
-    actions: Sender<Action>,
-
-    selected_app: SelectedApp,
+    context: AppContext,
     selected_index: Mutex<usize>,
 }
 
 impl AppSelector {
-    pub fn new(
-        pulse: Arc<PulseAudio>,
-        discord_status: CurrentDiscordStatus,
-        selected_app: SelectedApp,
-        actions: Sender<Action>,
-    ) -> Self {
+    pub fn new(context: AppContext) -> Self {
         Self {
-            pulse,
-            actions,
-            selected_app,
-            discord_status,
+            context,
             selected_index: Default::default(),
         }
     }
 
     pub fn navigate(&mut self, amount: isize) {
         let mut selected_index = self.selected_index.lock().unwrap();
-        let app_length = self.pulse.applications().len() as isize;
+        let app_length = self.context.audio.pulse.sources().len() as isize;
 
         let new_index = ((*selected_index) as isize + amount).rem_euclid(app_length);
         *selected_index = new_index as usize;
     }
 
     pub fn select(&self) {
-        let selected_app = self.selected_app.lock().unwrap();
+        let pulse = &self.context.audio.pulse;
+
+        let selected_source = pulse.current_source();
         let selected_index = self.selected_index.lock().unwrap();
 
-        if let Some(app) = self.pulse.applications().get(*selected_index) {
-            let selected_app_index = selected_app
+        if let Some(source) = pulse.sources().get(*selected_index) {
+            let selected_app_index = selected_source
                 .as_ref()
-                .map(|a| a.sink_input_index)
+                .map(|a| a.input_index())
                 .unwrap_or_default();
 
             // Stop the stream if pressing play on the same one
-            if app.sink_input_index == selected_app_index {
-                self.actions.send(Action::StopStream).unwrap();
-
-                return;
+            if source.input_index() == selected_app_index {
+                self.context.dispatch_action(Action::StopStream);
+            } else {
+                self.context
+                    .dispatch_action(Action::SetAudioSource(source.to_owned()));
             }
-
-            self.actions
-                .send(Action::SetApplication(app.to_owned()))
-                .unwrap();
         }
     }
 }
 
 impl Widget for &AppSelector {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        let apps = self.pulse.applications();
+        let pulse = &self.context.audio.pulse;
+        let discord = &self.context.discord;
 
         let block = Block::default()
             .title("─ Applications ")
@@ -90,20 +77,21 @@ impl Widget for &AppSelector {
 
         block.render(area, buf);
 
+        let sources = pulse.sources();
         let selected_index = self.selected_index.lock().unwrap();
-        let selected_app = self.selected_app.lock().unwrap();
+        let selected_source = pulse.current_source();
 
-        let discord_status = self.discord_status.lock().unwrap();
-        let is_discord_ready = matches!(*discord_status, DiscordStatus::Active(_));
+        let discord_status = discord.current_status();
+        let is_discord_ready = matches!(discord_status, DiscordStatus::Active(_));
 
         let top = block_inner.top();
 
-        for (index, app) in apps.iter().enumerate() {
+        for (index, source) in sources.iter().enumerate() {
             let is_over = *selected_index == index;
 
-            let is_active = selected_app
+            let is_active = selected_source
                 .as_ref()
-                .map(|f| f.sink_input_index == app.sink_input_index)
+                .map(|f| f.input_index() == source.input_index())
                 .unwrap_or_default();
 
             let paragraph_area = tui::layout::Rect::new(
@@ -131,7 +119,7 @@ impl Widget for &AppSelector {
                 IDLE_COLOR
             };
 
-            let paragraph = Paragraph::new(format!("{} {}", symbol, app.name.clone()))
+            let paragraph = Paragraph::new(format!("{} {}", symbol, source.name()))
                 .style(Style::default().fg(color));
 
             paragraph.render(paragraph_area, buf);
@@ -142,10 +130,10 @@ impl Widget for &AppSelector {
 impl ViewController for AppSelector {
     fn handle_event(&mut self, event: crossterm::event::Event) {
         {
-            let discord_status = self.discord_status.lock().unwrap();
+            let discord_status = self.context.discord.current_status();
 
             // Prevent selecting app before discord connects
-            if !matches!(*discord_status, DiscordStatus::Active(_)) {
+            if !matches!(discord_status, DiscordStatus::Active(_)) {
                 return;
             }
         }

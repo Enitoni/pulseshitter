@@ -1,5 +1,5 @@
 use std::fmt::Write as _;
-use std::sync::Arc;
+
 
 use tui::{
     layout::{Constraint, Direction, Layout},
@@ -9,32 +9,20 @@ use tui::{
 };
 
 use crate::{
-    audio::pulse::PulseAudio,
-    audio::{AudioError, AudioLatency, AudioStatus, AudioTime, CurrentAudioStatus},
+    audio::{AudioContext, AudioError, AudioStatus},
 };
 
 use super::animation::{self, AnimatedSpan, Animation};
 
 pub struct AudioModule {
-    status: CurrentAudioStatus,
-    latency: AudioLatency,
-    time: AudioTime,
-    pulse: Arc<PulseAudio>,
+    audio: AudioContext,
     animation: Animation,
 }
 
 impl AudioModule {
-    pub fn new(
-        status: CurrentAudioStatus,
-        pulse: Arc<PulseAudio>,
-        time: AudioTime,
-        latency: AudioLatency,
-    ) -> Self {
+    pub fn new(audio: AudioContext) -> Self {
         Self {
-            status,
-            pulse,
-            time,
-            latency,
+            audio,
             animation: Default::default(),
         }
     }
@@ -152,7 +140,7 @@ impl AudioModule {
 
         let info_lines = vec![
             Spans::from(Span::styled("Device:", Style::default().fg(Color::Gray))),
-            Spans::from(Span::raw(self.pulse.device_name())),
+            Spans::from(Span::raw(self.audio.pulse.current_device().name())),
             Spans::default(),
             Spans::from(Span::styled(
                 "Latency:         Time elapsed:",
@@ -160,8 +148,8 @@ impl AudioModule {
             )),
             Spans::from(Span::raw(format!(
                 "{:.3}ms          {}",
-                self.latency.load() as f32 / 1000.,
-                format_seconds(self.time.load()),
+                self.audio.latency.load() as f32 / 1000.,
+                format_seconds(self.audio.time.load()),
             ))),
         ];
 
@@ -191,7 +179,7 @@ impl Widget for &AudioModule {
 
         block.render(area, buf);
 
-        let status = self.status.lock().unwrap();
+        let status = self.audio.status.lock().unwrap();
 
         match &*status {
             AudioStatus::Idle => self.render_idle(block_inner, buf),

@@ -25,6 +25,22 @@ pub struct Discord {
     pub status: CurrentDiscordStatus,
 }
 
+#[derive(Clone)]
+pub struct DiscordContext {
+    current_user: CurrentDiscordUser,
+    current_status: CurrentDiscordStatus,
+}
+
+impl DiscordContext {
+    pub fn current_user(&self) -> Option<CurrentUser> {
+        self.current_user.lock().unwrap().clone()
+    }
+
+    pub fn current_status(&self) -> DiscordStatus {
+        self.current_status.lock().unwrap().clone()
+    }
+}
+
 pub type CurrentDiscordUser = Arc<Mutex<Option<CurrentUser>>>;
 pub type CurrentDiscordStatus = Arc<Mutex<DiscordStatus>>;
 
@@ -55,9 +71,16 @@ impl Discord {
         *client = None;
         *status = DiscordStatus::Idle;
     }
+
+    pub fn context(&self) -> DiscordContext {
+        DiscordContext {
+            current_user: self.current_user.clone(),
+            current_status: self.status.clone(),
+        }
+    }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub enum DiscordStatus {
     #[default]
     Idle,
@@ -68,9 +91,10 @@ pub enum DiscordStatus {
     Failed(DiscordError),
 }
 
+#[derive(Debug, Clone)]
 pub enum DiscordError {
-    Serenity(SerenityError),
-    Songbird(JoinError),
+    Serenity(Arc<SerenityError>),
+    Songbird(Arc<JoinError>),
 }
 
 impl Display for DiscordError {
@@ -110,7 +134,7 @@ impl Bot {
                 }
                 Err(why) => {
                     *self.status.lock().unwrap() =
-                        DiscordStatus::Failed(DiscordError::Songbird(why));
+                        DiscordStatus::Failed(DiscordError::Songbird(why.into()));
 
                     if retries >= Self::MAX_RETRIES {
                         break;
@@ -232,7 +256,8 @@ impl DroppableClient {
 
         rt.spawn(async move {
             if let Err(why) = new_client.start().await {
-                *(status.lock().unwrap()) = DiscordStatus::Failed(DiscordError::Serenity(why));
+                *(status.lock().unwrap()) =
+                    DiscordStatus::Failed(DiscordError::Serenity(why.into()));
             }
         });
 

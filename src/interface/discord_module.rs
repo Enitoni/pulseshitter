@@ -4,16 +4,15 @@ use tui::{
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
-use crate::dickcord::{CurrentDiscordStatus, CurrentDiscordUser, DiscordStatus};
+use crate::dickcord::{DiscordContext, DiscordStatus};
 
 pub struct DiscordModule {
-    user: CurrentDiscordUser,
-    status: CurrentDiscordStatus,
+    discord: DiscordContext,
 }
 
 impl DiscordModule {
-    pub fn new(user: CurrentDiscordUser, status: CurrentDiscordStatus) -> Self {
-        Self { user, status }
+    pub fn new(discord: DiscordContext) -> Self {
+        Self { discord }
     }
 }
 
@@ -41,16 +40,15 @@ impl Widget for &DiscordModule {
 
         block.render(area, buf);
 
-        let status = self.status.lock().unwrap();
+        let status = self.discord.current_status();
         let user = self
-            .user
-            .lock()
-            .unwrap()
+            .discord
+            .current_user()
             .as_ref()
             .map(|u| format!("{}#{}", u.name, u.discriminator))
             .unwrap_or_default();
 
-        if let DiscordStatus::Failed(err) = &*status {
+        if let DiscordStatus::Failed(err) = &status {
             let paragraph = Paragraph::new(format!("⚠  An error occurred! {}", err))
                 .style(Style::default().fg(Color::Red))
                 .wrap(Wrap { trim: false });
@@ -58,7 +56,7 @@ impl Widget for &DiscordModule {
             paragraph.render(block_inner, buf);
         }
 
-        if let DiscordStatus::Connecting = *status {
+        if let DiscordStatus::Connecting = status {
             let paragraph = Paragraph::new("Logging in, please wait...")
                 .style(Style::default().fg(Color::Yellow));
 
@@ -66,7 +64,7 @@ impl Widget for &DiscordModule {
         }
 
         if let DiscordStatus::Connected | DiscordStatus::Active(_) | DiscordStatus::Joining(_) =
-            &*status
+            status
         {
             let paragraph =
                 Paragraph::new(format!("● {}", user)).style(Style::default().fg(Color::Green));
@@ -74,14 +72,14 @@ impl Widget for &DiscordModule {
             paragraph.render(chunks[0], buf);
         }
 
-        if let DiscordStatus::Joining(channel) = &*status {
+        if let DiscordStatus::Joining(channel) = &status {
             let paragraph = Paragraph::new(format!("└─ Joining {}...", channel.name()))
                 .style(Style::default().fg(Color::Yellow));
 
             paragraph.render(chunks[1], buf);
         }
 
-        if let DiscordStatus::Active(channel) = &*status {
+        if let DiscordStatus::Active(channel) = status {
             let paragraph = Paragraph::new(format!("└─ In {}", channel.name()))
                 .style(Style::default().fg(Color::Green));
 

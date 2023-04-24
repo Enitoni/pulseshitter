@@ -1,8 +1,9 @@
 use self::analysis::{spawn_analysis_thread, StereoMeter};
 use self::parec::{spawn_event_thread, spawn_parec, Stderr};
+use self::pulse::{spawn_pulse_thread, Source};
 use crossbeam::atomic::AtomicCell;
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use pulse::{Application, PulseAudio};
+use pulse::PulseAudio;
 use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
 use songbird::input::reader::MediaSource;
 use songbird::input::{Codec, Container, Input, Reader};
@@ -20,7 +21,6 @@ pub mod pulse;
 pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
 pub type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;
 pub type CurrentAudioStatus = Arc<Mutex<AudioStatus>>;
-pub type SelectedApp = Arc<Mutex<Option<Application>>>;
 
 pub type AudioTime = Arc<AtomicCell<f32>>;
 pub type AudioLatency = Arc<AtomicCell<u32>>;
@@ -34,9 +34,7 @@ const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * SAMPLE_RATE;
 
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
-    pub selected_app: SelectedApp,
     pub status: CurrentAudioStatus,
-
     pub latency: AudioLatency,
     pub time: AudioTime,
 
@@ -58,7 +56,6 @@ pub struct AudioSystem {
 pub struct AudioContext {
     pub meter: Arc<StereoMeter>,
     pub pulse: Arc<PulseAudio>,
-    pub selected_app: SelectedApp,
     pub status: CurrentAudioStatus,
     pub latency: AudioLatency,
     pub time: AudioTime,
@@ -68,9 +65,9 @@ pub struct AudioContext {
 pub enum AudioStatus {
     #[default]
     Idle,
-    Connecting(Application),
-    Connected(Application),
-    Searching(Application),
+    Connecting(Source),
+    Connected(Source),
+    Searching(Source),
     Failed(AudioError),
 }
 
@@ -100,20 +97,18 @@ pub enum AudioMessage {
 }
 
 impl AudioSystem {
-    pub fn new(pulse: Arc<PulseAudio>) -> Self {
+    pub fn new() -> Self {
         let (sender, receiver) = unbounded();
 
         let (audio_producer, audio_consumer) = HeapRb::new(BUFFER_SIZE).split();
 
         Self {
-            pulse,
+            pulse: PulseAudio::new().into(),
             child: Default::default(),
             status: Default::default(),
 
             latency: Default::default(),
             time: Default::default(),
-
-            selected_app: Default::default(),
 
             sender,
             receiver,
@@ -126,11 +121,11 @@ impl AudioSystem {
         }
     }
 
-    pub fn set_application(&self, app: Application) {
-        *(self.selected_app.lock().unwrap()) = Some(app.clone());
-        *(self.status.lock().unwrap()) = AudioStatus::Connecting(app.clone());
+    pub fn set_source(&self, source: Source) {
+        self.pulse.set_current_source(source.clone());
+        *(self.status.lock().unwrap()) = AudioStatus::Connecting(source.clone());
 
-        match spawn_parec(self.pulse.device_name(), app) {
+        match spawn_parec(self.pulse.current_device(), source) {
             Ok(mut child) => {
                 let stdout = child.stdout.take().expect("Take stdout from child");
                 let stderr = child.stderr.take().expect("Take stderr from child");
@@ -153,10 +148,10 @@ impl AudioSystem {
     }
 
     pub fn clear(&self) {
+        self.pulse.clear();
         self.audio_consumer.lock().unwrap().clear();
 
         *(self.status.lock().unwrap()) = AudioStatus::Idle;
-        *(self.selected_app.lock().unwrap()) = None;
 
         if let Some(child) = self.child.lock().unwrap().as_mut() {
             child.kill().expect("Kill child");
@@ -173,7 +168,6 @@ impl AudioSystem {
         AudioContext {
             meter: self.meter.clone(),
             pulse: self.pulse.clone(),
-            selected_app: self.selected_app.clone(),
             status: self.status.clone(),
             latency: self.latency.clone(),
             time: self.time.clone(),
@@ -235,22 +229,13 @@ pub fn spawn_audio_thread(audio: Arc<AudioSystem>) {
 
         let receiver = audio.receiver.clone();
         let producer = audio.audio_producer.clone();
-        let pulse = audio.pulse.clone();
 
         let meter_buffer = audio.meter_buffer.clone();
         let time_to_wait = 1. / SAMPLE_RATE as f32;
 
         spawn_event_thread(audio.clone(), stderr.clone());
-        spawn_analysis_thread(audio);
-
-        // Update applications periodically
-        thread::Builder::new()
-            .name("pulse-app-polling".to_string())
-            .spawn(move || loop {
-                pulse.update_applications();
-                thread::sleep(Duration::from_secs(1));
-            })
-            .unwrap();
+        spawn_analysis_thread(audio.clone());
+        spawn_pulse_thread(audio);
 
         loop {
             while let Ok(event) = receiver.try_recv() {

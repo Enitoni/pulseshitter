@@ -1,51 +1,95 @@
-use std::sync::{Arc, Mutex};
-
-use pulsectl::controllers::{
-    types::{ApplicationInfo, DeviceInfo},
-    AppControl, DeviceControl, SinkController,
+use crossbeam::atomic::AtomicCell;
+use parking_lot::Mutex;
+use pulsectl::controllers::{AppControl, DeviceControl};
+use std::{
+    cmp::Ordering,
+    fmt::Display,
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
 };
+use strsim::jaro;
 
-/// A friendlier interface for interacting with PulseAudio
+use super::AudioSystem;
+
+type SinkInputIdx = Arc<AtomicCell<u32>>;
+type RawDevice = pulsectl::controllers::types::DeviceInfo;
+type RawSource = pulsectl::controllers::types::ApplicationInfo;
+
+/// Due to Discord having an agreement with Spotify, you cannot actually stream Spotify audio on Discord
+/// without it pausing your Spotify playback after a few seconds when it detects you may be doing this.
+///
+/// Because of this, pulseshitter is technically a workaround, as there is no way for Discord to detect that you may be streaming Spotify through it.
+/// In order to be on the safe side regarding TOS and legal matters, Spotify streaming is disabled by default.
+///
+/// If you don't care about this, you can compile pulseshitter with the environment variable below present to enable it anyway.
+const ALLOW_SPOTIFY_STREAMING: Option<&'static str> = option_env!("ALLOW_SPOTIFY_STREAMING");
+const SPOTIFY_NAME: &str = "spotify";
+
+/// This is a list of known vague names that applications will use for their audio sources.
+const VAGUE_NAMES: [&str; 3] = ["audioStream", "playStream", "WEBRTC VoiceEngine"];
+
+/// Abstracts pulseaudio/pipewire related implementations
+#[derive(Debug)]
 pub struct PulseAudio {
-    device: Arc<DeviceInfo>,
-    applications: Arc<Mutex<Vec<Application>>>,
+    current_device: Mutex<Device>,
+    current_source: Mutex<Option<Source>>,
+
+    /// The source the user selected.
+    /// Not to be confused with current source which is what is currently being streamed.
+    selected_source: Mutex<Option<Source>>,
+    sources: SourceManager,
 }
 
 impl PulseAudio {
     pub fn new() -> Self {
-        let mut handler = SinkController::create().unwrap();
-
-        let device = handler
+        let default_device: Device = Self::handler()
             .get_default_device()
-            .expect("Could not get default device");
+            .expect("get default device")
+            .into();
 
-        Self {
-            device: device.into(),
-            applications: Default::default(),
-        }
+        let new = Self {
+            current_device: default_device.into(),
+            current_source: Default::default(),
+
+            selected_source: Default::default(),
+            sources: Default::default(),
+        };
+
+        new.update();
+        new
     }
 
-    pub fn update_applications(&self) {
-        let mut handler = SinkController::create().unwrap();
-
-        let new_applications: Vec<Application> = handler
-            .list_applications()
-            .expect("Couldn't list applications")
-            .into_iter()
-            .map(|info| info.into())
-            .collect();
-
-        let mut applications = self.applications.lock().unwrap();
-        *applications = new_applications;
+    pub fn update(&self) {
+        self.sources
+            .update(Self::handler().list_applications().unwrap_or_default());
     }
 
-    pub fn applications(&self) -> Vec<Application> {
-        let applications = self.applications.lock().unwrap();
-        (*applications).clone()
+    pub fn sources(&self) -> Vec<Source> {
+        self.sources.list()
     }
 
-    pub fn device_name(&self) -> String {
-        self.device.name.clone().expect("Driver should have name")
+    pub fn current_source(&self) -> Option<Source> {
+        self.current_source.lock().clone()
+    }
+
+    pub fn set_current_source(&self, source: Source) {
+        *self.current_source.lock() = Some(source)
+    }
+
+    pub fn current_device(&self) -> Device {
+        self.current_device.lock().clone()
+    }
+
+    pub fn clear(&self) {
+        *self.current_source.lock() = None;
+        *self.selected_source.lock() = None;
+    }
+
+    /// pulsectl uses Rc and RefCell which makes it non-sync.
+    /// Because of this, the controller needs to be recreated every time we want to use it.
+    fn handler() -> pulsectl::controllers::SinkController {
+        pulsectl::controllers::SinkController::create().expect("create sinkcontroller")
     }
 }
 
@@ -55,46 +99,275 @@ impl Default for PulseAudio {
     }
 }
 
-#[derive(Clone)]
-pub struct Application {
-    pub id: u32,
-    pub process_id: u32,
-
-    pub name: String,
-
-    pub sink_input_name: String,
-    pub sink_input_index: u32,
+/// A parsed and normalized device
+#[derive(Debug, Clone)]
+pub struct Device {
+    id: String,
+    name: String,
 }
 
-impl From<ApplicationInfo> for Application {
-    fn from(info: ApplicationInfo) -> Self {
-        let full_name = info
-            .proplist
-            .get_str("application.name")
-            .or_else(|| info.proplist.get_str("media.name"))
-            .or_else(|| info.name.as_ref().map(|s| s.to_owned()))
-            .unwrap_or_else(|| "Unknown application".to_string());
+impl Device {
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
 
-        let id: u32 = info
-            .proplist
-            .get_str("object.id")
-            .expect("Application should have an object id!")
-            .parse()
-            .expect("Object id should be parsable");
+    pub fn id(&self) -> String {
+        self.id.clone()
+    }
+}
 
-        let process_id: u32 = info
-            .proplist
-            .get_str("application.process.id")
-            .expect("Application should have process id!")
-            .parse()
-            .expect("Application process id should be parsable");
+impl From<RawDevice> for Device {
+    fn from(raw: RawDevice) -> Self {
+        let name = [
+            raw.proplist.get_str("device.product.name"),
+            raw.proplist.get_str("device.description"),
+            raw.name.clone(),
+            raw.monitor_name,
+        ]
+        .into_iter()
+        .flatten()
+        .next()
+        .unwrap_or_default();
 
         Self {
-            id,
-            process_id,
-            name: full_name,
-            sink_input_name: info.name.unwrap_or_default(),
-            sink_input_index: info.index,
+            id: raw.name.expect("device must have a name"),
+            name,
         }
     }
+}
+
+/// A parsed and normalized audio source
+#[derive(Debug, Clone)]
+pub struct Source {
+    input_index: SinkInputIdx,
+    name: String,
+
+    /// This will be false when listing applications from pulsectl does not include this source
+    available: Arc<AtomicCell<bool>>,
+    age: Arc<AtomicCell<Instant>>,
+
+    kind: SourceKind,
+}
+
+enum SourceComparison {
+    Exact,
+    Partial(f64),
+    None,
+}
+
+impl Source {
+    /// How long should a source persist for after it is unavailable
+    const MAX_LIFESPAN: Duration = Duration::from_secs(60);
+
+    /// Unfortunately, there isn't a way to identify new streams that come from the same source as old ones,
+    /// so this function tries to do its best to see if this source may be the same as the rhs.
+    fn compare(&self, rhs: &Source) -> SourceComparison {
+        let mut score = 0.;
+
+        score += jaro(&self.name, &rhs.name);
+        score += (self.kind == rhs.kind) as i32 as f64;
+
+        match score {
+            x if x == 2. => SourceComparison::Exact,
+            x if x > 0.5 => SourceComparison::Partial(x),
+            _ => SourceComparison::None,
+        }
+    }
+
+    fn update(&self, new: Source) {
+        self.input_index.store(new.input_index.load());
+        self.age.store(new.age.load());
+        self.available.store(true);
+    }
+
+    fn is_dead(&self) -> bool {
+        !self.available() && self.age.load().elapsed() >= Self::MAX_LIFESPAN
+    }
+
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn input_index(&self) -> u32 {
+        self.input_index.load()
+    }
+
+    pub fn available(&self) -> bool {
+        self.available.load()
+    }
+
+    pub fn kind(&self) -> SourceKind {
+        self.kind
+    }
+}
+
+impl From<RawSource> for Source {
+    fn from(raw: RawSource) -> Self {
+        let mut name_candidates: Vec<_> = [
+            raw.proplist.get_str("application.name"),
+            raw.proplist.get_str("application.process.binary"),
+            raw.proplist.get_str("media.name"),
+            raw.name,
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|n| !VAGUE_NAMES.iter().any(|s| s == n))
+        .collect();
+
+        // Favor capitalized app names
+        name_candidates.sort_by(|a, _| {
+            if str_is_lowercase(a) {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        });
+
+        let kind = SourceKind::parse(&name_candidates);
+        let name = kind.determine_name(&name_candidates);
+
+        Self {
+            name,
+            kind,
+            age: Arc::new(Instant::now().into()),
+            input_index: Arc::new(raw.index.into()),
+            available: Arc::new(true.into()),
+        }
+    }
+}
+
+/// When apps like browsers have multiple tabs, there is no way to differentiate the source from each one without covering these edge cases.
+/// That is the purpose of this enum.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SourceKind {
+    Standalone,
+    BrowserTab(BrowserKind),
+}
+
+impl SourceKind {
+    fn parse<T: AsRef<str>>(candidates: &[T]) -> Self {
+        candidates
+            .iter()
+            .map(AsRef::as_ref)
+            .map(BrowserKind::parse)
+            .find_map(|k| k.map(Into::into))
+            .unwrap_or(Self::Standalone)
+    }
+
+    fn determine_name<T: AsRef<str>>(&self, candidates: &[T]) -> String {
+        match self {
+            SourceKind::Standalone => candidates
+                .iter()
+                .map(AsRef::as_ref)
+                .map(ToOwned::to_owned)
+                .next()
+                .unwrap_or_else(|| "Unknown source".to_string()),
+            SourceKind::BrowserTab(b) => b.determine_tab_name(candidates),
+        }
+    }
+}
+
+/// Currently supported Browser edgecases
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BrowserKind {
+    Firefox,
+    Chrome,
+}
+
+impl BrowserKind {
+    const FIREFOX: &str = "firefox";
+    const CHROME: &str = "chrome";
+
+    fn parse<T: AsRef<str>>(name: T) -> Option<Self> {
+        match name.as_ref().to_lowercase() {
+            x if x == Self::FIREFOX => Self::Firefox.into(),
+            x if x == Self::CHROME => Self::Chrome.into(),
+            _ => None,
+        }
+    }
+
+    fn determine_tab_name<T: AsRef<str>>(&self, candidates: &[T]) -> String {
+        let browser_name = self.to_string();
+
+        candidates
+            .iter()
+            .map(AsRef::as_ref)
+            .map(ToOwned::to_owned)
+            .find(|c| c.to_lowercase() != browser_name)
+            .unwrap_or_else(|| format!("Unknown {} tab", browser_name))
+    }
+}
+
+impl Display for BrowserKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Self::Firefox => Self::FIREFOX,
+            Self::Chrome => Self::CHROME,
+        };
+
+        write!(f, "{}", name)
+    }
+}
+
+impl From<BrowserKind> for SourceKind {
+    fn from(value: BrowserKind) -> Self {
+        Self::BrowserTab(value)
+    }
+}
+
+#[derive(Debug, Default)]
+struct SourceManager(Mutex<Vec<Source>>);
+
+impl SourceManager {
+    fn update(&self, incoming: Vec<RawSource>) {
+        let parsed_incoming: Vec<_> = incoming
+            .into_iter()
+            .map(Source::from)
+            .filter(|s| ALLOW_SPOTIFY_STREAMING.is_some() || s.name != SPOTIFY_NAME)
+            .collect();
+
+        let mut existing_sources = self.0.lock();
+
+        // This will be set to true again for the existing ones
+        existing_sources
+            .iter()
+            .for_each(|source| source.available.store(false));
+
+        for new_source in parsed_incoming {
+            let existing = existing_sources
+                .iter()
+                .find(|old| matches!(old.compare(&new_source), SourceComparison::Exact));
+
+            match existing {
+                Some(s) => s.update(new_source),
+                None => existing_sources.push(new_source),
+            }
+        }
+
+        existing_sources.retain(|s| !s.is_dead())
+    }
+
+    fn list(&self) -> Vec<Source> {
+        self.0.lock().clone()
+    }
+}
+
+fn str_is_lowercase(str: &str) -> bool {
+    str.chars().all(|c| c.is_lowercase())
+}
+
+pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
+    let run = move || {
+        let tick_rate = 100;
+
+        loop {
+            audio.pulse.update();
+            thread::sleep(Duration::from_millis(tick_rate));
+        }
+    };
+
+    thread::Builder::new()
+        .name("audio-pulse".to_string())
+        .spawn(run)
+        .unwrap();
 }
