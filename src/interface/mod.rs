@@ -1,4 +1,4 @@
-use self::{dashboard::DashboardView, meter::Meter, setup::SetupView};
+use self::{dashboard::DashboardView, setup::SetupView};
 use crate::{Action, App};
 use crossterm::{
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
@@ -42,7 +42,6 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
 
     let mut terminal = Terminal::new(backend)?;
     let events = run_event_loop();
-    let meter = Meter::new(app.audio.context());
 
     'ui: loop {
         let frame_now = Instant::now();
@@ -72,8 +71,7 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
                 .direction(Direction::Vertical)
                 .constraints([
                     Constraint::Length(4),
-                    Constraint::Length(area.height.saturating_sub(11)),
-                    Constraint::Length(5),
+                    Constraint::Length(area.height.saturating_sub(6)),
                     Constraint::Length(2),
                 ])
                 .horizontal_margin(1)
@@ -90,21 +88,15 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
                 .alignment(Alignment::Right)
                 .style(footer_style);
 
-            let mut meter_area = chunks[2];
-            meter_area.x += 1;
-            meter_area.y += 1;
-            meter_area.width -= 1;
-
             let footer_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .horizontal_margin(1)
-                .split(chunks[3]);
+                .split(chunks[2]);
 
             f.render_widget(logo, chunks[0]);
             f.render_widget(&*view, chunks[1]);
             f.render_widget(copyright, footer_chunks[0]);
-            f.render_widget(&meter, meter_area);
             f.render_widget(version, footer_chunks[1]);
         });
 
