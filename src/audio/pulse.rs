@@ -190,7 +190,7 @@ impl Source {
     /// so this function tries to do its best to see if this source may be the same as the rhs.
     fn compare(&self, rhs: &Source) -> SourceComparison {
         // It is unlikely that there will ever be conflicts, so if the indices match, this is most likely the same source.
-        if self.input_index() == rhs.input_index() {
+        if self.input_index() == rhs.input_index() || *self.name.lock() == *rhs.name.lock() {
             return SourceComparison::Exact;
         }
 
@@ -200,7 +200,7 @@ impl Source {
 
         match score {
             x if x == 2. => SourceComparison::Exact,
-            x if x > 0.5 => SourceComparison::Partial(x),
+            x if x > 1. => SourceComparison::Partial(x),
             _ => SourceComparison::None,
         }
     }
@@ -349,7 +349,7 @@ impl From<BrowserKind> for SourceKind {
 struct SourceManager(Mutex<Vec<Source>>);
 
 impl SourceManager {
-    const MINIMUM_RESTORE_SCORE: f64 = 1.6;
+    const MINIMUM_RESTORE_SCORE: f64 = 1.3;
 
     fn update(&self, incoming: Vec<RawSource>) {
         let parsed_incoming: Vec<_> = incoming
