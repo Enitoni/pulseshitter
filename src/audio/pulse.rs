@@ -252,12 +252,6 @@ impl From<RawSource> for Source {
         })
         .collect();
 
-        let all_props: Vec<_> = raw
-            .proplist
-            .iter()
-            .filter_map(|k| raw.proplist.get_str(&k).map(|v| (k, v)))
-            .collect();
-
         // Favor capitalized app names
         name_candidates.sort_by(|a, _| {
             if str_is_lowercase(a) {
@@ -269,10 +263,6 @@ impl From<RawSource> for Source {
 
         let kind = SourceKind::parse(&name_candidates);
         let name = kind.determine_name(&name_candidates);
-
-        if name == "Unknown firefox tab" {
-            dbg!(&all_props);
-        }
 
         Self {
             kind,
@@ -443,10 +433,6 @@ pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
 
             let current = audio.pulse.current_source();
             let selected = audio.pulse.selected_source();
-
-            if current.is_none() && selected.is_some() {
-                dbg!(&current, &selected);
-            }
 
             if let (Some(selected), None) = (selected, current) {
                 let restored = audio.pulse.sources.restore(selected);
