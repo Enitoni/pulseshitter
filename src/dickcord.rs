@@ -21,6 +21,7 @@ use tokio::runtime::Runtime;
 #[derive(Default)]
 pub struct Discord {
     client: Arc<Mutex<Option<DroppableClient>>>,
+    context: DynamicContext,
 
     pub current_user: CurrentDiscordUser,
     pub status: CurrentDiscordStatus,
@@ -60,6 +61,7 @@ impl Discord {
             self.status.clone(),
             self.current_user.clone(),
             actions,
+            self.context.clone(),
             config,
         )
         .into();
@@ -67,10 +69,13 @@ impl Discord {
 
     pub fn disconnect(&self) {
         let mut client = self.client.lock().unwrap();
-        let mut status = self.status.lock().unwrap();
+
+        if let Some(client) = &*client {
+            client.rt.block_on(async { client.stop().await });
+        }
 
         *client = None;
-        *status = DiscordStatus::Idle;
+        *self.status.lock().unwrap() = DiscordStatus::Idle;
     }
 
     pub fn context(&self) -> DiscordContext {
@@ -107,12 +112,15 @@ impl Display for DiscordError {
     }
 }
 
+type DynamicContext = Arc<Mutex<Option<Context>>>;
+
 struct Bot {
     user_id: u64,
     status: CurrentDiscordStatus,
     user: CurrentDiscordUser,
     actions: Sender<Action>,
     audio_stream: AudioStream,
+    context: DynamicContext,
 }
 
 impl Bot {
@@ -171,10 +179,11 @@ impl Bot {
 #[async_trait]
 impl EventHandler for Bot {
     async fn ready(&self, context: Context, ready: Ready) {
-        {
-            *(self.status.lock().unwrap()) = DiscordStatus::Connected;
-            *(self.user.lock().unwrap()) = Some(ready.user.clone());
-        }
+        context.online().await;
+
+        *(self.status.lock().unwrap()) = DiscordStatus::Connected;
+        *(self.context.lock().unwrap()) = Some(context.clone());
+        *(self.user.lock().unwrap()) = Some(ready.user.clone());
 
         self.actions.send(Action::Activate).unwrap();
         let guilds = context.cache.guilds();
@@ -257,9 +266,11 @@ async fn find_voice_channel(
         })
 }
 
-/// A Discord client that can be stopped by dropping it
+/// A Discord client that can be stopped
 struct DroppableClient {
     manager: Arc<tokio::sync::Mutex<ShardManager>>,
+    status: CurrentDiscordStatus,
+    context: DynamicContext,
     rt: Arc<Runtime>,
 }
 
@@ -269,6 +280,7 @@ impl DroppableClient {
         status: CurrentDiscordStatus,
         user: CurrentDiscordUser,
         actions: Sender<Action>,
+        context: DynamicContext,
         config: Config,
     ) -> Self {
         let rt = Runtime::new().unwrap();
@@ -277,6 +289,7 @@ impl DroppableClient {
             audio_stream,
             actions,
             status: status.clone(),
+            context: context.clone(),
             user_id: config.user_id,
             user,
         };
@@ -290,28 +303,43 @@ impl DroppableClient {
         });
 
         let manager = new_client.shard_manager.clone();
+        let moved_status = status.clone();
 
         rt.spawn(async move {
             if let Err(why) = new_client.start().await {
-                *(status.lock().unwrap()) =
+                *(moved_status.lock().unwrap()) =
                     DiscordStatus::Failed(DiscordError::Serenity(why.into()));
             }
         });
 
         Self {
+            status,
             manager,
+            context,
             rt: Arc::new(rt),
         }
     }
-}
 
-impl Drop for DroppableClient {
-    fn drop(&mut self) {
-        let manager = self.manager.lock();
+    async fn stop(&self) {
+        let context = self
+            .context
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("context exists");
 
-        self.rt.block_on(async move {
-            manager.await.shutdown_all().await;
-        })
+        let status = self.status.lock().unwrap().clone();
+
+        if let DiscordStatus::Active(channel) = status {
+            let songbird = songbird::get(&context)
+                .await
+                .expect("songbird is registered");
+
+            let _ = songbird.remove(channel.guild_id).await;
+        }
+
+        context.invisible().await;
+        self.manager.lock().await.shutdown_all().await;
     }
 }
 

@@ -1,5 +1,5 @@
 use self::{dashboard::DashboardView, setup::SetupView};
-use crate::{Action, App};
+use crate::App;
 use crossterm::{
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -108,7 +108,7 @@ pub fn run_ui(app: Arc<App>) -> Result<(), io::Error> {
         while let Ok(event) = events.try_recv() {
             if let Event::Key(key) = &event {
                 if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
-                    app.action_sender.send(Action::Exit).unwrap();
+                    app.discord.disconnect();
                     break 'ui;
                 }
             }
