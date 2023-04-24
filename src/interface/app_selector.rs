@@ -74,8 +74,11 @@ impl Widget for &AppSelector {
         block.render(area, buf);
 
         let sources = pulse.sources();
+
         let selected_index = self.selected_index.lock().unwrap();
-        let selected_source = pulse.current_source();
+
+        let selected_source = pulse.selected_source();
+        let current_source = pulse.current_source();
 
         let discord_status = discord.current_status();
         let is_discord_ready = matches!(discord_status, DiscordStatus::Active(_));
@@ -85,7 +88,12 @@ impl Widget for &AppSelector {
         for (index, source) in sources.iter().enumerate() {
             let is_over = *selected_index == index;
 
-            let is_active = selected_source
+            let is_active = current_source
+                .as_ref()
+                .map(|f| f.input_index() == source.input_index())
+                .unwrap_or_default();
+
+            let is_selected = selected_source
                 .as_ref()
                 .map(|f| f.input_index() == source.input_index())
                 .unwrap_or_default();
@@ -101,7 +109,7 @@ impl Widget for &AppSelector {
                 IDLE_SYMBOL
             } else if is_over {
                 HOVER_SYMBOL
-            } else if is_active {
+            } else if is_selected {
                 ACTIVE_SYMBOL
             } else {
                 IDLE_SYMBOL
