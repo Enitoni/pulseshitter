@@ -1,6 +1,5 @@
 use std::fmt::Write as _;
 
-
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
@@ -8,9 +7,7 @@ use tui::{
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
-use crate::{
-    audio::{AudioContext, AudioError, AudioStatus},
-};
+use crate::audio::{AudioContext, AudioError, AudioStatus};
 
 use super::animation::{self, AnimatedSpan, Animation};
 
@@ -70,6 +67,42 @@ impl AudioModule {
             vec![
                 loading.clone(),
                 (vec![" Connecting".to_string()], loading.1.clone()),
+                (
+                    vec![
+                        "".to_string(),
+                        ".".to_string(),
+                        "..".to_string(),
+                        "...".to_string(),
+                    ],
+                    loading.1,
+                ),
+            ],
+            chunks[0],
+            buf,
+        );
+    }
+
+    fn render_searching(&self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(2), Constraint::Percentage(100)])
+            .split(area);
+
+        let loading: AnimatedSpan = animation::Loading.into();
+
+        let help_text = Paragraph::new(
+            "Streaming will resume once the source is available again.
+            ",
+        )
+        .wrap(Wrap { trim: true });
+
+        help_text.render(chunks[1], buf);
+
+        self.animation.render(
+            1,
+            vec![
+                loading.clone(),
+                (vec![" Searching".to_string()], loading.1.clone()),
                 (
                     vec![
                         "".to_string(),
@@ -186,7 +219,7 @@ impl Widget for &AudioModule {
             AudioStatus::Connecting(_) => self.render_connecting(block_inner, buf),
             AudioStatus::Failed(err) => self.render_error(*err, block_inner, buf),
             AudioStatus::Connected(_) => self.render_connected(block_inner, buf),
-            _ => {}
+            AudioStatus::Searching => self.render_searching(block_inner, buf),
         }
     }
 }

@@ -83,6 +83,14 @@ impl PulseAudio {
         *self.current_source.lock() = Some(source)
     }
 
+    pub fn selected_source(&self) -> Option<Source> {
+        self.selected_source.lock().clone()
+    }
+
+    pub fn set_selected_source(&self, source: Source) {
+        *self.selected_source.lock() = Some(source)
+    }
+
     pub fn current_device(&self) -> Device {
         self.current_device.lock().clone()
     }
@@ -90,6 +98,10 @@ impl PulseAudio {
     pub fn clear(&self) {
         *self.current_source.lock() = None;
         *self.selected_source.lock() = None;
+    }
+
+    pub fn invalid(&self) {
+        *self.current_source.lock() = None;
     }
 
     /// pulsectl uses Rc and RefCell which makes it non-sync.
@@ -159,6 +171,16 @@ enum SourceComparison {
     Exact,
     Partial(f64),
     None,
+}
+
+impl SourceComparison {
+    fn score(&self) -> f64 {
+        match self {
+            SourceComparison::Exact => f64::MAX,
+            SourceComparison::Partial(score) => *score,
+            SourceComparison::None => 0.,
+        }
+    }
 }
 
 impl Source {
@@ -345,6 +367,8 @@ impl From<BrowserKind> for SourceKind {
 struct SourceManager(Mutex<Vec<Source>>);
 
 impl SourceManager {
+    const MINIMUM_RESTORE_SCORE: f64 = 1.;
+
     fn update(&self, incoming: Vec<RawSource>) {
         let parsed_incoming: Vec<_> = incoming
             .into_iter()
@@ -376,6 +400,34 @@ impl SourceManager {
     fn list(&self) -> Vec<Source> {
         self.0.lock().clone()
     }
+
+    fn restore(&self, target: Source) -> Option<Source> {
+        let sources = self.0.lock();
+
+        let mut candidates: Vec<_> = sources
+            .iter()
+            .map(|c| (c, c.compare(&target).score()))
+            .collect();
+
+        candidates.sort_by(|(_, a), (_, b)| {
+            if a > b {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        });
+
+        candidates
+            .into_iter()
+            .find_map(|(source, score)| {
+                if score > Self::MINIMUM_RESTORE_SCORE && source.available() {
+                    Some(source)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+    }
 }
 
 fn str_is_lowercase(str: &str) -> bool {
@@ -388,6 +440,22 @@ pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
 
         loop {
             audio.pulse.update();
+
+            let current = audio.pulse.current_source();
+            let selected = audio.pulse.selected_source();
+
+            if current.is_none() && selected.is_some() {
+                dbg!(&current, &selected);
+            }
+
+            if let (Some(selected), None) = (selected, current) {
+                let restored = audio.pulse.sources.restore(selected);
+
+                if let Some(restored) = restored {
+                    audio.set_source(restored);
+                }
+            }
+
             thread::sleep(Duration::from_millis(tick_rate));
         }
     };
