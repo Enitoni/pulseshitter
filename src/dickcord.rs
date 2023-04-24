@@ -7,8 +7,9 @@ use crate::Action;
 use crossbeam::channel::Sender;
 use serenity::async_trait;
 use serenity::client::bridge::gateway::ShardManager;
+use serenity::futures::future::{join_all, try_join_all};
 use serenity::model::gateway::Ready;
-use serenity::model::prelude::GuildChannel;
+use serenity::model::prelude::{ChannelId, ChannelType, GuildChannel, GuildId, Member};
 use serenity::model::user::CurrentUser;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
@@ -158,42 +159,102 @@ impl Bot {
 
         result.map(|_| handler)
     }
+
+    async fn disconnect(&self, context: &Context, guild: &GuildId) {
+        *self.status.lock().unwrap() = DiscordStatus::Connected;
+
+        let manager = songbird::get(context).await.unwrap();
+        let _ = manager.remove(*guild).await;
+    }
 }
 
 #[async_trait]
 impl EventHandler for Bot {
-    async fn ready(&self, _: Context, ready: Ready) {
+    async fn ready(&self, context: Context, ready: Ready) {
         {
             *(self.status.lock().unwrap()) = DiscordStatus::Connected;
-            *(self.user.lock().unwrap()) = Some(ready.user);
+            *(self.user.lock().unwrap()) = Some(ready.user.clone());
         }
 
         self.actions.send(Action::Activate).unwrap();
+        let guilds = context.cache.guilds();
+
+        if let Some(channel) = find_voice_channel(&context, self.user_id, guilds.clone()).await {
+            self.connect_and_stream(context, channel).await;
+        }
     }
 
     async fn voice_state_update(&self, context: Context, _: Option<VoiceState>, new: VoiceState) {
-        if let Some(((member, channel_id), guild_id)) =
-            new.member.zip(new.channel_id).zip(new.guild_id)
-        {
-            let is_target = member.user.id == self.user_id;
-            let is_streaming = new.self_stream.unwrap_or_default();
+        let unnest = |((a, b), c)| (a, b, c);
+        let is_target = |(m, _, _): &(Member, ChannelId, GuildId)| m.user.id == self.user_id;
 
-            if !is_target {
-                return;
-            }
+        let in_old_channel = match &*self.status.lock().unwrap() {
+            DiscordStatus::Active(channel) => Some(channel.to_owned()),
+            _ => None,
+        }
+        .map(|c| (c.id, c.guild_id));
 
-            if !is_streaming {
-                let manager = songbird::get(&context).await.unwrap();
-                let _ = manager.remove(guild_id).await;
+        let in_new_channel = new
+            .member
+            .zip(new.channel_id)
+            .zip(new.guild_id)
+            .map(unnest)
+            .filter(is_target)
+            .map(|(_, c, g)| (c, g));
 
-                return;
-            }
+        // Target left a channel
+        if let (Some((_, guild)), None) = &(in_old_channel, in_new_channel) {
+            self.disconnect(&context, guild).await
+        }
 
-            if let Some(channel) = context.cache.guild_channel(channel_id) {
-                self.connect_and_stream(context, channel).await;
-            }
+        let channel_to_join = in_new_channel
+            .and_then(|(new, _)| match in_old_channel {
+                Some((old, _)) if old != new => Some(new),
+                None => Some(new),
+                _ => None,
+            })
+            .and_then(|c| context.cache.guild_channel(c));
+
+        if let Some(channel) = channel_to_join {
+            self.connect_and_stream(context, channel).await;
         }
     }
+}
+
+async fn find_voice_channel(
+    context: &Context,
+    user_id: u64,
+    guilds: Vec<GuildId>,
+) -> Option<GuildChannel> {
+    let channel_futures = guilds.iter().map(|g| g.channels(context));
+    let channels: Vec<_> = try_join_all(channel_futures)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .flat_map(|h| h.into_values())
+        .filter(|c| matches!(c.kind, ChannelType::Voice))
+        .collect();
+
+    let member_futures = channels
+        .into_iter()
+        .map(|c| async { (c.members(context).await, c) });
+
+    join_all(member_futures)
+        .await
+        .into_iter()
+        .find_map(|(r, c)| {
+            r.ok()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|m| (m, &c))
+                .find_map(|(m, c)| {
+                    if m.user.id == user_id {
+                        Some(c.to_owned())
+                    } else {
+                        None
+                    }
+                })
+        })
 }
 
 /// A Discord client that can be stopped by dropping it
