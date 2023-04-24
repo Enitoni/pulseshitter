@@ -27,7 +27,12 @@ const ALLOW_SPOTIFY_STREAMING: Option<&'static str> = option_env!("ALLOW_SPOTIFY
 const SPOTIFY_NAME: &str = "spotify";
 
 /// This is a list of known vague names that applications will use for their audio sources.
-const VAGUE_NAMES: [&str; 3] = ["audioStream", "playStream", "WEBRTC VoiceEngine"];
+const VAGUE_NAMES: [&str; 4] = [
+    "audioStream",
+    "playStream",
+    "Playback",
+    "WEBRTC VoiceEngine",
+];
 
 /// Abstracts pulseaudio/pipewire related implementations
 #[derive(Debug)]
@@ -140,7 +145,7 @@ impl From<RawDevice> for Device {
 #[derive(Debug, Clone)]
 pub struct Source {
     input_index: SinkInputIdx,
-    name: String,
+    name: Arc<Mutex<String>>,
 
     /// This will be false when listing applications from pulsectl does not include this source
     available: Arc<AtomicCell<bool>>,
@@ -162,9 +167,13 @@ impl Source {
     /// Unfortunately, there isn't a way to identify new streams that come from the same source as old ones,
     /// so this function tries to do its best to see if this source may be the same as the rhs.
     fn compare(&self, rhs: &Source) -> SourceComparison {
-        let mut score = 0.;
+        // It is unlikely that there will ever be conflicts, so if the indices match, this is most likely the same source.
+        if self.input_index() == rhs.input_index() {
+            return SourceComparison::Exact;
+        }
 
-        score += jaro(&self.name, &rhs.name);
+        let mut score = 0.;
+        score += jaro(&self.name.lock(), &rhs.name.lock());
         score += (self.kind == rhs.kind) as i32 as f64;
 
         match score {
@@ -178,6 +187,8 @@ impl Source {
         self.input_index.store(new.input_index.load());
         self.age.store(new.age.load());
         self.available.store(true);
+
+        *self.name.lock() = new.name()
     }
 
     fn is_dead(&self) -> bool {
@@ -185,7 +196,7 @@ impl Source {
     }
 
     pub fn name(&self) -> String {
-        self.name.clone()
+        self.name.lock().clone()
     }
 
     pub fn input_index(&self) -> u32 {
@@ -211,7 +222,11 @@ impl From<RawSource> for Source {
         ]
         .into_iter()
         .flatten()
-        .filter(|n| !VAGUE_NAMES.iter().any(|s| s == n))
+        .filter(|n| {
+            !VAGUE_NAMES
+                .iter()
+                .any(|s| s.to_lowercase() == n.to_lowercase())
+        })
         .collect();
 
         // Favor capitalized app names
@@ -227,8 +242,8 @@ impl From<RawSource> for Source {
         let name = kind.determine_name(&name_candidates);
 
         Self {
-            name,
             kind,
+            name: Arc::new(name.into()),
             age: Arc::new(Instant::now().into()),
             input_index: Arc::new(raw.index.into()),
             available: Arc::new(true.into()),
@@ -323,7 +338,7 @@ impl SourceManager {
         let parsed_incoming: Vec<_> = incoming
             .into_iter()
             .map(Source::from)
-            .filter(|s| ALLOW_SPOTIFY_STREAMING.is_some() || s.name != SPOTIFY_NAME)
+            .filter(|s| ALLOW_SPOTIFY_STREAMING.is_some() || s.name() != SPOTIFY_NAME)
             .collect();
 
         let mut existing_sources = self.0.lock();
