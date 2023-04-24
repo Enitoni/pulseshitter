@@ -1,99 +1,157 @@
 use std::{
-    env,
-    io::Stdin,
-    sync::{mpsc, Arc},
+    sync::{Arc, Mutex},
     thread,
 };
 
+use audio::spawn_audio_thread;
+use audio::{pulse::Source, AudioContext};
+use crossbeam::channel::{unbounded, Receiver, Sender};
+use dickcord::{Discord, DiscordContext};
+use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
+
 use crate::audio::AudioSystem;
+use state::Config;
 
 mod audio;
 mod dickcord;
-mod pulse;
+mod interface;
+mod state;
 
-#[tokio::main]
+pub struct App {
+    config: Arc<Mutex<Option<Config>>>,
 
-async fn main() {
-    setup_logger();
+    audio: Arc<AudioSystem>,
+    discord: Discord,
 
-    let pulse = pulse::PulseAudio::new();
+    pub current_view: Mutex<View>,
+    pub action_sender: Sender<Action>,
+    pub action_receiver: Receiver<Action>,
+}
 
-    // Run this once to get list of applications
-    pulse.update_applications();
+#[derive(Clone)]
+pub struct AppContext {
+    actions: Sender<Action>,
 
-    println!("Pulseshitter");
-    println!("Using device: {}", pulse.device_name());
+    pub discord: DiscordContext,
+    pub audio: AudioContext,
+}
 
-    let stdin = std::io::stdin();
-    let applications = pulse.applications();
-
-    for app in applications.iter() {
-        println!(
-            "{} - {} ({})",
-            app.sink_input_index, &app.name, &app.sink_input_name
-        );
+impl AppContext {
+    pub fn dispatch_action(&self, action: Action) {
+        self.actions.send(action).expect("send action")
     }
+}
 
-    let index = stdin.prompt("Select the id of the application you want to stream");
-    let index: u32 = index.trim().parse().expect("Failed to parse input");
+impl App {
+    fn new() -> Self {
+        let discord = Discord::default();
+        let audio = Arc::new(AudioSystem::new());
 
-    let app = applications
-        .into_iter()
-        .find(|a| a.sink_input_index == index)
-        .expect("Selected application does not exist");
+        let config = Config::restore();
+        let (action_sender, action_receiver) = unbounded();
 
-    println!("You selected {}", &app.name);
+        spawn_audio_thread(audio.clone());
 
-    let audio = Arc::new(AudioSystem::new(pulse));
-    let (sender, receiver) = mpsc::sync_channel::<()>(0);
+        let context = AppContext {
+            actions: action_sender.clone(),
+            discord: discord.context(),
+            audio: audio.context(),
+        };
 
-    thread::spawn({
-        let audio = audio.clone();
+        // Existing setup
+        if let Some(config) = config {
+            discord.connect(audio.stream(), config.clone(), action_sender.clone());
 
-        move || {
-            // Wait for serenity
-            receiver.recv().unwrap();
+            let dashboard_view = DashboardView::new(context);
 
-            audio.set_application(app);
-            AudioSystem::run(audio);
+            return Self {
+                audio,
+                discord,
+                action_sender,
+                action_receiver,
+                config: Mutex::new(Some(config)).into(),
+                current_view: View::Dashboard(dashboard_view).into(),
+            };
         }
-    });
 
-    dickcord::dickcord(sender, audio.clone()).await
-}
+        let setup_view = SetupView::new(action_sender.clone(), discord.status.clone());
 
-trait Prompt {
-    fn prompt(&self, message: &str) -> String;
-}
+        // New setup
+        Self {
+            current_view: View::Setup(setup_view).into(),
+            config: Mutex::new(Config::restore()).into(),
+            action_receiver,
+            action_sender,
+            discord,
+            audio,
+        }
+    }
 
-impl Prompt for Stdin {
-    fn prompt(&self, message: &str) -> String {
-        let mut result = String::new();
-        println!("{}: ", message);
+    pub fn handle_action(&self, action: Action) {
+        match action {
+            Action::SetConfig(new_config) => {
+                let mut config = self.config.lock().unwrap();
+                self.discord.connect(
+                    self.audio.stream(),
+                    new_config.clone(),
+                    self.action_sender.clone(),
+                );
 
-        self.read_line(&mut result).expect("Read line correctly");
-        result
+                *config = Some(new_config);
+            }
+            Action::Activate => {
+                let config = self.config.lock().unwrap();
+
+                // We save because the config allowed a connection
+                config
+                    .as_ref()
+                    .expect("Cannot activate without config")
+                    .save();
+
+                let mut view = self.current_view.lock().unwrap();
+
+                let dashboard_view = DashboardView::new(self.context());
+                *view = View::Dashboard(dashboard_view);
+            }
+            Action::StopStream => self.audio.clear(),
+            Action::SetAudioSource(app) => self.audio.set_source(app),
+            Action::Exit => self.discord.disconnect(),
+        };
+    }
+
+    pub fn context(&self) -> AppContext {
+        AppContext {
+            actions: self.action_sender.clone(),
+            discord: self.discord.context(),
+            audio: self.audio.context(),
+        }
     }
 }
 
-fn setup_logger() -> Result<(), fern::InitError> {
-    if env::var("ENABLE_LOGGING").is_err() {
-        return Ok(());
-    };
+pub enum Action {
+    SetConfig(Config),
+    SetAudioSource(Source),
+    StopStream,
+    Activate,
+    Exit,
+}
 
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{} {}] {}",
-                record.level(),
-                record.target(),
-                message
-            ))
+fn main() {
+    let app = Arc::new(App::new());
+
+    thread::Builder::new()
+        .name("action-polling".to_string())
+        .spawn({
+            let state = Arc::clone(&app);
+            let receiver = state.action_receiver.clone();
+
+            move || loop {
+                if let Ok(action) = receiver.recv() {
+                    state.handle_action(action)
+                }
+            }
         })
-        .level(log::LevelFilter::Debug)
-        .chain(std::io::stdout())
-        .chain(fern::log_file("output.log")?)
-        .apply()?;
+        .unwrap();
 
-    Ok(())
+    run_ui(app).unwrap();
 }
