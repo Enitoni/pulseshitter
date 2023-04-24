@@ -70,6 +70,11 @@ impl Widget for &DiscordModule {
                 Paragraph::new(format!("● {}", user)).style(Style::default().fg(Color::Green));
 
             paragraph.render(chunks[0], buf);
+
+            let paragraph =
+                Paragraph::new("└ Inactive").style(Style::default().fg(Color::DarkGray));
+
+            paragraph.render(chunks[1], buf);
         }
 
         if let DiscordStatus::Joining(channel) = &status {
