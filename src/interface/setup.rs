@@ -1,11 +1,15 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    vec,
+};
 
 use crossbeam::channel::Sender;
 use crossterm::event::{Event, KeyCode};
 use enum_iterator::{next_cycle, Sequence};
 use tui::{
     layout::{Constraint, Direction, Layout},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
+    text::{Span, Spans},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
@@ -31,10 +35,10 @@ pub struct SetupView {
 
 impl SetupView {
     pub fn new(actions: Sender<Action>, status: Arc<Mutex<DiscordStatus>>) -> Self {
-        let mut bot_token = Field::new("Bot token");
+        let mut bot_token = Field::new("Bot Token");
         bot_token.focus();
 
-        let user_id = Field::new("User id");
+        let user_id = Field::new("User ID");
 
         Self {
             selected_field: Default::default(),
@@ -108,7 +112,9 @@ impl Widget for &SetupView {
         let block_inner = block.inner(area);
         block.render(area, buf);
 
-        let status_text = match &*(self.status.lock().unwrap()) {
+        let status = self.status.lock().unwrap().clone();
+
+        let status_text = match &status {
             DiscordStatus::Idle => {
                 "Press tab to switch between fields. Press enter to connect when you're done."
                     .to_string()
@@ -116,26 +122,32 @@ impl Widget for &SetupView {
             DiscordStatus::Connecting => "Connecting...".to_string(),
             DiscordStatus::Connected => "Connected!".to_string(),
             DiscordStatus::Failed(error) => {
-                format!("Uh oh, something went wrong. {}", error)
+                format!("{}", error)
             }
             _ => String::new(),
         };
 
-        let status_text = Paragraph::new(status_text);
-
-        let help_text = match self.selected_field {
-            SelectedField::BotToken => BOT_TOKEN_HELP,
-            SelectedField::UserId => USER_ID_HELP,
+        let status_color = match &status {
+            DiscordStatus::Idle => Color::DarkGray,
+            DiscordStatus::Connecting => Color::Yellow,
+            DiscordStatus::Connected => Color::Green,
+            DiscordStatus::Failed(_) => Color::Red,
+            _ => Color::Reset,
         };
 
-        let help_text = Paragraph::new(help_text).wrap(Wrap { trim: false });
+        let status_text = Paragraph::new(status_text).style(Style::default().fg(status_color));
+
+        let help_text = match self.selected_field {
+            SelectedField::BotToken => get_bot_token_help(),
+            SelectedField::UserId => get_user_id_help(),
+        };
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3),
+                Constraint::Length(4),
                 Constraint::Length(3),
-                Constraint::Length(2),
                 Constraint::Percentage(100),
             ])
             .margin(1)
@@ -149,5 +161,38 @@ impl Widget for &SetupView {
     }
 }
 
-const BOT_TOKEN_HELP: &str = "The bot token is the password of your bot. This can be found in https://discord.com/developers under \"Applications\" and \"Bot\", in which you can generate your token there.";
-const USER_ID_HELP: &str = "The user that the bot should follow, which in most cases is yourself. The bot will join the same voice call that the user is in. Right click on a user and press \"Copy User ID\" listed at the bottom. If no such button exists, enable developer mode by going in Settings > Appearance > Developer Mode (found at the bottom).";
+fn get_bot_token_help() -> Paragraph<'static> {
+    let bold = Style::default().add_modifier(Modifier::BOLD);
+
+    let spans = vec![
+        Spans::from(vec![
+            Span::raw("Required to connect to Discord with a bot. "),
+            Span::styled(
+                "Make sure \"Server Members Intent\" is enabled in the Bot settings.",
+                bold,
+            ),
+        ]),
+        Spans::default(),
+        Spans::from(vec![
+            Span::raw("If you don't have a bot token at hand, visit https://discord.com/developers/applications/ , Create a new bot by pressing \"New Application\" on the top right of the page, on the application settings page, on the left sidebar go to \"Bot\". Click \"Reset Token\", Discord will generate a bot token pulseshitter can use; copy it, keep it secured, don't lose it. Scroll down, "),
+            Span::styled("enable \"Server Members Intent\"", bold),
+            Span::raw(", then Save Changes.")
+        ]),
+        Spans::default(),
+        Spans::from(Span::raw("You will need a link to invite your bot into the servers you need to use. On the sidebar, head over to \"OAuth2 > URL Generator.\" Under \"Scopes\" select \"bot\", under \"Bot Permissions\" select \"Connect\" and \"Speak.\" At the bottom, copy the Generated URL and visit it in your browser to invite your bot to your server"))
+    ];
+
+    Paragraph::new(spans).wrap(Wrap { trim: false })
+}
+
+fn get_user_id_help() -> Paragraph<'static> {
+    let spans = vec![
+        Spans::from(Span::raw("pulseshitter will automatically join all voice channels this user joins. This should be your own user ID. ")),
+        Spans::default(),
+        Spans::from(Span::raw("To get your user ID, right click yourself in any server's user list or in a message, then click \"Copy ID.\"")),
+        Spans::default(),
+        Spans::from(Span::raw("If there's no \"Copy ID\" option, go to Settings > Advanced and enable \"Developer Mode\" and try again."))
+    ];
+
+    Paragraph::new(spans).wrap(Wrap { trim: false })
+}
