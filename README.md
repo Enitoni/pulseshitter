@@ -10,7 +10,12 @@ you see, it all started back in 2015, when discord announced discord, an instant
 
 however, they clearly don't support everyone because they hate us blessed linux users. to this day, discord still [doesn't support](https://support.discord.com/hc/en-us/community/posts/360050971374-Linux-Screen-Share-Sound-Support) sharing audio via screen sharing on linux.
 
-this overengineered project is a workaround to make it possible to share audio via a bot. it does **not** pipe your audio through your microphone.
+## what is this?
+
+this overengineered project is a workaround to make it possible to share audio via a **bot**. ***it does not pipe your audio through your microphone.*** this has two advantages:
+
+- Other people can mute your stream without muting you
+- The audio is in pristine 9D quality (stereo)
 
 ## features
 
