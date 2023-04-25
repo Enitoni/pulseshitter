@@ -80,7 +80,7 @@ pub fn spawn_parec(device: Device, source: Source) -> Result<Child, AudioError> 
         .stderr(Stdio::piped())
         .arg("--verbose")
         .arg("--device")
-        .arg(device.id())
+        .arg(format!("{}.monitor", device.id()))
         .arg("--monitor-stream")
         .arg(source.input_index().to_string())
         .arg("--format=float32le")
