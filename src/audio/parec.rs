@@ -14,9 +14,6 @@ use std::{
 
 pub type Stderr = Arc<Mutex<Option<BufReader<ChildStderr>>>>;
 
-// This is an estimation used to synchronize the meter
-pub const PAREC_SAMPLE_RATE: usize = 256;
-
 lazy_static! {
     static ref CONNECTED_REGEX: Regex =
         Regex::new(r"Connected to device (.*?) \(index: (\d*), suspended: no\)").unwrap();
