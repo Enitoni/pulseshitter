@@ -47,7 +47,6 @@ pub struct AudioSystem {
     audio_producer: AudioProducer,
     audio_consumer: AudioConsumer,
 
-    meter_buffer: Arc<parking_lot::Mutex<Vec<u8>>>,
     meter: Arc<StereoMeter>,
 }
 
@@ -117,7 +116,6 @@ impl AudioSystem {
             audio_consumer: Mutex::from(audio_consumer).into(),
 
             meter: StereoMeter::new().into(),
-            meter_buffer: Default::default(),
         }
     }
 
@@ -240,12 +238,11 @@ pub fn spawn_audio_thread(audio: Arc<AudioSystem>) {
         let receiver = audio.receiver.clone();
         let producer = audio.audio_producer.clone();
 
-        let meter_buffer = audio.meter_buffer.clone();
         let time_to_wait = 1. / SAMPLE_RATE as f32;
 
         spawn_event_thread(audio.clone(), stderr.clone());
         spawn_analysis_thread(audio.clone());
-        spawn_pulse_thread(audio);
+        spawn_pulse_thread(audio.clone());
 
         loop {
             while let Ok(event) = receiver.try_recv() {
@@ -269,7 +266,9 @@ pub fn spawn_audio_thread(audio: Arc<AudioSystem>) {
                 let new_bytes = &buf[..bytes_read];
 
                 producer.lock().unwrap().push_slice(new_bytes);
-                meter_buffer.lock().extend_from_slice(new_bytes);
+                audio.meter.write(new_bytes);
+            } else {
+                audio.meter.write(&[0; BUFFER_SIZE])
             }
 
             thread::sleep(Duration::from_secs_f32(time_to_wait));
