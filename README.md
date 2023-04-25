@@ -14,8 +14,8 @@ however, they clearly don't support everyone because they hate us blessed linux 
 
 this overengineered project is a workaround to make it possible to share audio via a **bot**. ***it does not pipe your audio through your microphone.*** this has two advantages:
 
-- Other people can mute your stream without muting you
-- The audio is in pristine 9D quality (stereo)
+- other people can mute your stream without muting you
+- the audio is stereo (ＷＩＤＥ)
 
 ## features
 
