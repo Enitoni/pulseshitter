@@ -136,6 +136,7 @@ impl AudioSystem {
                 // Kill existing child if it exists
                 if let Some(stored_child) = stored_child.as_mut() {
                     stored_child.kill().expect("Kill child");
+                    stored_child.wait().expect("Child killed properly");
                 }
 
                 *stored_child = Some(child);
@@ -154,8 +155,9 @@ impl AudioSystem {
 
         *(self.status.lock().unwrap()) = AudioStatus::Idle;
 
-        if let Some(child) = self.child.lock().unwrap().as_mut() {
+        if let Some(mut child) = self.child.lock().unwrap().take() {
             child.kill().expect("Kill child");
+            child.wait().expect("Child killed properly");
         }
 
         self.sender.send(AudioMessage::Clear).unwrap();
