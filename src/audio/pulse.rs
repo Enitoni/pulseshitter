@@ -245,7 +245,7 @@ impl From<SinkInput> for Source {
         })
         .collect();
 
-        name_candidates.sort_by(|(_, a), (_, b)| a.cmp(b));
+        name_candidates.sort_by(|(_, a), (_, b)| b.cmp(a));
         let name_candidates: Vec<_> = name_candidates.into_iter().map(|(s, _)| s).collect();
 
         let kind = SourceKind::parse(&name_candidates);
@@ -287,7 +287,7 @@ impl SourceKind {
                 .map(AsRef::as_ref)
                 .map(ToOwned::to_owned)
                 .next()
-                .unwrap_or_else(|| "Unknown source".to_string()),
+                .unwrap_or_else(|| "Unidentifiable audio source".to_string()),
         }
     }
 }
@@ -300,13 +300,13 @@ pub enum BrowserKind {
 }
 
 impl BrowserKind {
-    const FIREFOX: &str = "firefox";
-    const CHROME: &str = "chrome";
+    const FIREFOX: &str = "Firefox";
+    const CHROME: &str = "Chrome";
 
     fn parse<T: AsRef<str>>(name: T) -> Option<Self> {
-        match name.as_ref().to_lowercase() {
-            x if x == Self::FIREFOX => Self::Firefox.into(),
-            x if x == Self::CHROME => Self::Chrome.into(),
+        match name.as_ref().to_uppercase() {
+            x if x == Self::FIREFOX.to_uppercase() => Self::Firefox.into(),
+            x if x == Self::CHROME.to_uppercase() => Self::Chrome.into(),
             _ => None,
         }
     }
@@ -318,8 +318,8 @@ impl BrowserKind {
             .iter()
             .map(AsRef::as_ref)
             .map(ToOwned::to_owned)
-            .find(|c| c.to_lowercase() != browser_name)
-            .unwrap_or_else(|| format!("Unknown {} tab", browser_name))
+            .find(|c| c.to_uppercase() != browser_name.to_uppercase())
+            .unwrap_or_else(|| format!("Unidentifiable {} Tab", browser_name))
     }
 }
 
@@ -451,16 +451,9 @@ fn calculate_name_quality(str: &str) -> i32 {
     score += str_is_doublecase(str) as i32;
 
     let words: Vec<_> = WORD_SPLIT_REGEX
-        .captures(str)
-        .map(|captures| {
-            captures
-                .iter()
-                .skip(1)
-                .flatten()
-                .map(|m| m.as_str())
-                .collect()
-        })
-        .unwrap_or_default();
+        .find_iter(str)
+        .map(|m| m.as_str())
+        .collect();
 
     score += words.into_iter().fold(0, |acc, w| {
         let is_vague = VAGUE_WORDS
