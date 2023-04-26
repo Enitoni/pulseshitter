@@ -265,14 +265,9 @@ pub fn spawn_audio_thread(audio: Arc<AudioSystem>) {
                 let mut buf = [0; BUFFER_SIZE];
 
                 let bytes_read = stdout.read(&mut buf).unwrap_or_default();
-                let analysis_bytes_read = if bytes_read > 0 {
-                    bytes_read
-                } else {
-                    BUFFER_SIZE
-                };
 
                 producer.lock().unwrap().push_slice(&buf[..bytes_read]);
-                audio.meter.write(&buf[..analysis_bytes_read]);
+                audio.meter.write(&buf[..bytes_read]);
             } else {
                 audio.meter.write(&[0; SAMPLE_IN_BYTES * 4])
             }
