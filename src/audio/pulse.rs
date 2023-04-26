@@ -148,7 +148,6 @@ pub struct Source {
 
     /// This will be false when listing applications from pulsectl does not include this source
     available: Arc<AtomicCell<bool>>,
-    is_new: Arc<AtomicCell<bool>>,
     age: Arc<AtomicCell<Instant>>,
 
     volume: Arc<AtomicCell<f32>>,
@@ -261,7 +260,6 @@ impl From<SinkInput> for Source {
         Self {
             kind,
             name: Arc::new(name.into()),
-            is_new: Arc::new(true.into()),
             available: Arc::new(true.into()),
             volume: Arc::new(raw.volume.into()),
             age: Arc::new(Instant::now().into()),
