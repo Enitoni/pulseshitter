@@ -1,4 +1,4 @@
-use self::analysis::{spawn_analysis_thread, StereoMeter};
+use self::analysis::{raw_samples_from_bytes, spawn_analysis_thread, StereoMeter};
 use self::parec::{spawn_event_thread, spawn_parec, Stderr};
 use self::pulse::{spawn_pulse_thread, Source};
 use crossbeam::atomic::AtomicCell;
@@ -232,6 +232,18 @@ impl MediaSource for AudioStream {
     }
 }
 
+fn normalize_volume(bytes: &[u8], incoming_volume: f32) -> Vec<u8> {
+    let reciprocal = 1. / incoming_volume;
+    let db_loudness = 10. * reciprocal.log(3.);
+    let signal_factor = 10f32.powf(db_loudness / 20.);
+
+    raw_samples_from_bytes(bytes)
+        .into_iter()
+        .map(|s| s * signal_factor)
+        .flat_map(|s| s.to_le_bytes())
+        .collect()
+}
+
 pub fn spawn_audio_thread(audio: Arc<AudioSystem>) {
     let run = move || {
         let mut stdout = None;
@@ -264,10 +276,17 @@ pub fn spawn_audio_thread(audio: Arc<AudioSystem>) {
             if let Some(stdout) = stdout.as_mut() {
                 let mut buf = [0; BUFFER_SIZE];
 
-                let bytes_read = stdout.read(&mut buf).unwrap_or_default();
+                let current_source_volume = audio
+                    .pulse
+                    .current_source()
+                    .map(|s| s.volume())
+                    .unwrap_or(1.);
 
-                producer.lock().unwrap().push_slice(&buf[..bytes_read]);
-                audio.meter.write(&buf[..bytes_read]);
+                let bytes_read = stdout.read(&mut buf).unwrap_or_default();
+                let normalized_bytes = normalize_volume(&buf[..bytes_read], current_source_volume);
+
+                producer.lock().unwrap().push_slice(&normalized_bytes);
+                audio.meter.write(&normalized_bytes);
             } else {
                 audio.meter.write(&[0; SAMPLE_IN_BYTES * 4])
             }
