@@ -481,6 +481,8 @@ pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
                 }
             }
         }
+
+        child.wait().expect("child exits correctly");
     };
 
     thread::Builder::new()
