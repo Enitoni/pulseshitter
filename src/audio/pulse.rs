@@ -234,8 +234,19 @@ impl From<SinkInput> for Source {
         ]
         .into_iter()
         .flatten()
-        .filter(|s| calculate_name_quality(s) > 0)
+        .filter_map(|s| {
+            let score = calculate_name_quality(s);
+
+            if score > 1 {
+                Some((s, score))
+            } else {
+                None
+            }
+        })
         .collect();
+
+        name_candidates.sort_by(|(_, a), (_, b)| a.cmp(b));
+        let name_candidates: Vec<_> = name_candidates.into_iter().map(|(s, _)| s).collect();
 
         let kind = SourceKind::parse(&name_candidates);
         let name = kind.determine_name(&name_candidates);
@@ -462,6 +473,8 @@ fn calculate_name_quality(str: &str) -> i32 {
             acc + 1
         }
     });
+
+    dbg!(&str, score);
 
     score
 }
