@@ -480,8 +480,6 @@ pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
                     audio.set_source(restored);
                 }
             }
-
-            dbg!("woo");
         }
     };
 
@@ -589,10 +587,7 @@ mod pactl {
 
             Self::list()
                 .into_iter()
-                .find(|sink| {
-                    dbg!(&sink.name, &default_sink);
-                    sink.name == default_sink.trim()
-                })
+                .find(|sink| sink.name == default_sink.trim())
                 .expect("find default sink")
         }
 
