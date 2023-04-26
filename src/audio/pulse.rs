@@ -553,7 +553,7 @@ mod pactl {
                     left.zip(right)
                 })
                 .map(|(left, right)| left + right / 2.)
-                .expect("volume is parsed correctly");
+                .unwrap_or(1.);
 
             let properties: HashMap<String, String> = value
                 .get("properties")
