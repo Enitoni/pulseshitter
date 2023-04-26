@@ -1,6 +1,6 @@
 use crossbeam::atomic::AtomicCell;
 use lazy_static::lazy_static;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use regex::Regex;
 use std::{
     cmp::Ordering,
@@ -144,7 +144,7 @@ impl From<Sink> for Device {
 #[derive(Debug, Clone)]
 pub struct Source {
     input_index: SinkInputIdx,
-    name: Arc<Mutex<String>>,
+    name: Arc<RwLock<String>>,
 
     /// This will be false when listing applications from pulsectl does not include this source
     available: Arc<AtomicCell<bool>>,
@@ -177,17 +177,21 @@ impl Source {
     /// so this function tries to do its best to see if this source may be the same as the rhs.
     fn compare(&self, rhs: &Source) -> SourceComparison {
         // It is unlikely that there will ever be conflicts, so if the indices match, this is most likely the same source.
-        if self.input_index() == rhs.input_index() || *self.name.lock() == *rhs.name.lock() {
+        let is_same_index = self.input_index() == rhs.input_index();
+        let is_same_name = *self.name.read() == *rhs.name.read();
+
+        if is_same_index || is_same_name {
             return SourceComparison::Exact;
         }
 
-        let mut score = 0.;
-        score += jaro(&self.name.lock(), &rhs.name.lock());
-        score += (self.kind == rhs.kind) as i32 as f64;
+        if self.kind != rhs.kind {
+            return SourceComparison::None;
+        }
+
+        let score = jaro(&self.name.read(), &rhs.name.read());
 
         match score {
-            x if x == 2. => SourceComparison::Exact,
-            x if x > 1. => SourceComparison::Partial(x),
+            x if x > 0.5 => SourceComparison::Partial(x),
             _ => SourceComparison::None,
         }
     }
@@ -196,8 +200,7 @@ impl Source {
         self.input_index.store(new.input_index.load());
         self.age.store(new.age.load());
         self.available.store(true);
-
-        *self.name.lock() = new.name()
+        *self.name.write() = new.name()
     }
 
     fn is_dead(&self) -> bool {
@@ -205,7 +208,7 @@ impl Source {
     }
 
     pub fn name(&self) -> String {
-        self.name.lock().clone()
+        self.name.read().clone()
     }
 
     pub fn input_index(&self) -> u32 {
@@ -246,9 +249,9 @@ impl From<SinkInput> for Source {
         Self {
             kind,
             name: Arc::new(name.into()),
+            available: Arc::new(true.into()),
             age: Arc::new(Instant::now().into()),
             input_index: Arc::new((raw.index as u32).into()),
-            available: Arc::new(true.into()),
         }
     }
 }
@@ -366,12 +369,34 @@ impl SourceManager {
             }
         }
 
+        for source in existing_sources
+            .clone()
+            .into_iter()
+            .filter(|s| s.available())
+        {
+            let to_remove = existing_sources
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| !s.available())
+                .find(|(_, s)| {
+                    matches!(s.compare(&source), SourceComparison::Exact) || s.is_dead()
+                });
+
+            if let Some((i, _)) = to_remove {
+                existing_sources.remove(i);
+            }
+        }
+
         existing_sources.sort_by(|a, b| b.age.load().cmp(&a.age.load()));
-        existing_sources.retain(|s| !s.is_dead())
     }
 
     fn list(&self) -> Vec<Source> {
-        self.0.lock().clone()
+        self.0
+            .lock()
+            .clone()
+            .into_iter()
+            .filter(|s| !s.is_dead())
+            .collect()
     }
 
     fn restore(&self, target: Source) -> Option<Source> {
@@ -379,8 +404,11 @@ impl SourceManager {
 
         let mut candidates: Vec<_> = sources
             .iter()
+            .filter(|c| c.available())
             .map(|c| (c, c.compare(&target).score()))
             .collect();
+
+        //
 
         candidates.sort_by(|(_, a), (_, b)| {
             if a > b {
