@@ -5,6 +5,8 @@ use regex::Regex;
 use std::{
     cmp::Ordering,
     fmt::Display,
+    io::{BufRead, BufReader},
+    process::{Command, Stdio},
     sync::Arc,
     thread,
     time::{Duration, Instant},
@@ -443,13 +445,29 @@ fn calculate_name_quality(str: &str) -> i32 {
 }
 
 pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
-    let run = move || {
-        let tick_rate = 100;
+    let run = move || loop {
+        let mut child = Command::new("pactl")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .arg("subscribe")
+            .spawn()
+            .expect("spawns pactl subscriber");
 
-        let test = pactl::Sink::default();
-        dbg!(test);
+        let stdout = child.stdout.take().unwrap();
+        let mut reader = BufReader::new(stdout);
 
         loop {
+            let mut line = String::new();
+            let result = reader.read_line(&mut line);
+
+            if result.is_err() {
+                break;
+            }
+
+            if !line.contains("sink-input") {
+                continue;
+            }
+
             audio.pulse.update();
 
             let current = audio.pulse.current_source();
@@ -463,7 +481,7 @@ pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
                 }
             }
 
-            thread::sleep(Duration::from_millis(tick_rate));
+            dbg!("woo");
         }
     };
 
