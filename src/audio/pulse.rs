@@ -148,6 +148,7 @@ pub struct Source {
 
     /// This will be false when listing applications from pulsectl does not include this source
     available: Arc<AtomicCell<bool>>,
+    is_new: Arc<AtomicCell<bool>>,
     age: Arc<AtomicCell<Instant>>,
 
     kind: SourceKind,
@@ -254,6 +255,7 @@ impl From<SinkInput> for Source {
         Self {
             kind,
             name: Arc::new(name.into()),
+            is_new: Arc::new(true.into()),
             available: Arc::new(true.into()),
             age: Arc::new(Instant::now().into()),
             input_index: Arc::new((raw.index as u32).into()),
@@ -344,7 +346,7 @@ impl From<BrowserKind> for SourceKind {
 struct SourceManager(Mutex<Vec<Source>>);
 
 impl SourceManager {
-    const MINIMUM_RESTORE_SCORE: f64 = 0.5;
+    const MINIMUM_RESTORE_SCORE: f64 = 0.7;
 
     fn update(&self, incoming: Vec<SinkInput>) {
         let parsed_incoming: Vec<_> = incoming
@@ -426,7 +428,10 @@ impl SourceManager {
         candidates
             .into_iter()
             .find_map(|(source, score)| {
-                if score > Self::MINIMUM_RESTORE_SCORE && source.available() {
+                let is_new_enough = source.age.load().elapsed() < Duration::from_secs(1);
+                let is_similar_enough = score > Self::MINIMUM_RESTORE_SCORE;
+
+                if is_new_enough && is_similar_enough {
                     Some(source)
                 } else {
                     None
