@@ -30,7 +30,7 @@ pub type Sample = f32;
 pub const SAMPLE_RATE: usize = 48000;
 pub const SAMPLE_IN_BYTES: usize = 4;
 
-const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * SAMPLE_RATE;
+const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * 2048;
 
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
@@ -263,12 +263,16 @@ pub fn spawn_audio_thread(audio: Arc<AudioSystem>) {
                 let mut buf = [0; BUFFER_SIZE];
 
                 let bytes_read = stdout.read(&mut buf).unwrap_or_default();
-                let new_bytes = &buf[..bytes_read];
+                let analysis_bytes_read = if bytes_read > 0 {
+                    bytes_read
+                } else {
+                    BUFFER_SIZE
+                };
 
-                producer.lock().unwrap().push_slice(new_bytes);
-                audio.meter.write(new_bytes);
+                producer.lock().unwrap().push_slice(&buf[..bytes_read]);
+                audio.meter.write(&buf[..analysis_bytes_read]);
             } else {
-                audio.meter.write(&[0; BUFFER_SIZE])
+                audio.meter.write(&[0; SAMPLE_IN_BYTES * 4])
             }
 
             thread::sleep(Duration::from_secs_f32(time_to_wait));
