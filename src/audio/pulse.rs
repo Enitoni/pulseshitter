@@ -467,8 +467,6 @@ fn calculate_name_quality(str: &str) -> i32 {
         }
     });
 
-    dbg!(&str, score);
-
     score
 }
 
