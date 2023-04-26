@@ -151,6 +151,7 @@ pub struct Source {
     is_new: Arc<AtomicCell<bool>>,
     age: Arc<AtomicCell<Instant>>,
 
+    volume: Arc<AtomicCell<f32>>,
     kind: SourceKind,
 }
 
@@ -198,10 +199,11 @@ impl Source {
     }
 
     fn update(&self, new: Source) {
-        self.input_index.store(new.input_index.load());
-        self.age.store(new.age.load());
         self.available.store(true);
-        *self.name.write() = new.name()
+        self.age.store(new.age.load());
+        *self.name.write() = new.name();
+        self.volume.store(new.volume.load());
+        self.input_index.store(new.input_index.load());
     }
 
     fn is_dead(&self) -> bool {
@@ -222,6 +224,10 @@ impl Source {
 
     pub fn kind(&self) -> SourceKind {
         self.kind
+    }
+
+    pub fn volume(&self) -> f32 {
+        self.volume.load()
     }
 }
 
@@ -257,6 +263,7 @@ impl From<SinkInput> for Source {
             name: Arc::new(name.into()),
             is_new: Arc::new(true.into()),
             available: Arc::new(true.into()),
+            volume: Arc::new(raw.volume.into()),
             age: Arc::new(Instant::now().into()),
             input_index: Arc::new((raw.index as u32).into()),
         }
