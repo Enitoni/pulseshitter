@@ -234,14 +234,8 @@ impl From<SinkInput> for Source {
         ]
         .into_iter()
         .flatten()
+        .filter(|s| calculate_name_quality(s) > 0)
         .collect();
-
-        name_candidates.sort_by(|a, b| {
-            let a_score = calculate_name_quality(a);
-            let b_score = calculate_name_quality(b);
-
-            b_score.cmp(&a_score)
-        });
 
         let kind = SourceKind::parse(&name_candidates);
         let name = kind.determine_name(&name_candidates);
@@ -276,13 +270,13 @@ impl SourceKind {
 
     fn determine_name<T: AsRef<str>>(&self, candidates: &[T]) -> String {
         match self {
+            SourceKind::BrowserTab(b) => b.determine_tab_name(candidates),
             SourceKind::Standalone => candidates
                 .iter()
                 .map(AsRef::as_ref)
                 .map(ToOwned::to_owned)
                 .next()
                 .unwrap_or_else(|| "Unknown source".to_string()),
-            SourceKind::BrowserTab(b) => b.determine_tab_name(candidates),
         }
     }
 }
