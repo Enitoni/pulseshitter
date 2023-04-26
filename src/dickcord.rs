@@ -15,7 +15,7 @@ use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use songbird::error::JoinError;
 use songbird::{Call, SerenityInit};
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, Runtime};
 
 /// Main Discord connection state managing
 #[derive(Default)]
@@ -281,7 +281,13 @@ impl DroppableClient {
         context: DynamicContext,
         config: Config,
     ) -> Self {
-        let rt = Runtime::new().unwrap();
+        let rt = Builder::new_multi_thread()
+            .worker_threads(1)
+            .max_blocking_threads(1)
+            .enable_all()
+            .thread_name("discord")
+            .build()
+            .unwrap();
 
         let handler = Bot {
             audio_stream,
