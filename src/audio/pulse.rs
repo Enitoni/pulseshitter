@@ -1,7 +1,6 @@
 use crossbeam::atomic::AtomicCell;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
-use pulsectl::controllers::{AppControl, DeviceControl};
 use regex::Regex;
 use std::{
     cmp::Ordering,
@@ -13,10 +12,9 @@ use std::{
 use strsim::jaro;
 
 use super::AudioSystem;
+use pactl::*;
 
 type SinkInputIdx = Arc<AtomicCell<u32>>;
-type RawDevice = pulsectl::controllers::types::DeviceInfo;
-type RawSource = pulsectl::controllers::types::ApplicationInfo;
 
 /// Due to Discord having an agreement with Spotify, you cannot actually stream Spotify audio on Discord
 /// without it pausing your Spotify playback after a few seconds when it detects you may be doing this.
@@ -48,10 +46,7 @@ pub struct PulseAudio {
 
 impl PulseAudio {
     pub fn new() -> Self {
-        let default_device: Device = Self::handler()
-            .get_default_device()
-            .expect("get default device")
-            .into();
+        let default_device: Device = Sink::default().into();
 
         let new = Self {
             current_device: default_device.into(),
@@ -66,8 +61,7 @@ impl PulseAudio {
     }
 
     pub fn update(&self) {
-        self.sources
-            .update(Self::handler().list_applications().unwrap_or_default());
+        self.sources.update(SinkInput::list());
     }
 
     pub fn sources(&self) -> Vec<Source> {
@@ -102,12 +96,6 @@ impl PulseAudio {
     pub fn invalid(&self) {
         *self.current_source.lock() = None;
     }
-
-    /// pulsectl uses Rc and RefCell which makes it non-sync.
-    /// Because of this, the controller needs to be recreated every time we want to use it.
-    fn handler() -> pulsectl::controllers::SinkController {
-        pulsectl::controllers::SinkController::create().expect("create sinkcontroller")
-    }
 }
 
 impl Default for PulseAudio {
@@ -133,23 +121,20 @@ impl Device {
     }
 }
 
-impl From<RawDevice> for Device {
-    fn from(raw: RawDevice) -> Self {
+impl From<Sink> for Device {
+    fn from(raw: Sink) -> Self {
         let name = [
-            raw.proplist.get_str("device.product.name"),
-            raw.proplist.get_str("device.description"),
-            raw.name.clone(),
-            raw.monitor_name,
+            raw.properties.get("device.product.name").cloned(),
+            raw.properties.get("device.description").cloned(),
+            raw.properties.get("node.name").cloned(),
+            Some(raw.name.clone()),
         ]
         .into_iter()
         .flatten()
         .next()
         .unwrap_or_default();
 
-        Self {
-            id: raw.name.expect("device must have a name"),
-            name,
-        }
+        Self { id: raw.name, name }
     }
 }
 
@@ -234,13 +219,13 @@ impl Source {
     }
 }
 
-impl From<RawSource> for Source {
-    fn from(raw: RawSource) -> Self {
+impl From<SinkInput> for Source {
+    fn from(raw: SinkInput) -> Self {
         let mut name_candidates: Vec<_> = [
-            raw.name,
-            raw.proplist.get_str("application.name"),
-            raw.proplist.get_str("application.process.binary"),
-            raw.proplist.get_str("media.name"),
+            raw.properties.get("application.process.binary"),
+            raw.properties.get("application.name"),
+            raw.properties.get("media.name"),
+            raw.properties.get("node.name"),
         ]
         .into_iter()
         .flatten()
@@ -260,7 +245,7 @@ impl From<RawSource> for Source {
             kind,
             name: Arc::new(name.into()),
             age: Arc::new(Instant::now().into()),
-            input_index: Arc::new(raw.index.into()),
+            input_index: Arc::new((raw.index as u32).into()),
             available: Arc::new(true.into()),
         }
     }
@@ -351,7 +336,7 @@ struct SourceManager(Mutex<Vec<Source>>);
 impl SourceManager {
     const MINIMUM_RESTORE_SCORE: f64 = 1.3;
 
-    fn update(&self, incoming: Vec<RawSource>) {
+    fn update(&self, incoming: Vec<SinkInput>) {
         let parsed_incoming: Vec<_> = incoming
             .into_iter()
             .map(Source::from)
@@ -461,6 +446,9 @@ pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
     let run = move || {
         let tick_rate = 100;
 
+        let test = pactl::Sink::default();
+        dbg!(test);
+
         loop {
             audio.pulse.update();
 
@@ -483,4 +471,128 @@ pub fn spawn_pulse_thread(audio: Arc<AudioSystem>) {
         .name("audio-pulse".to_string())
         .spawn(run)
         .unwrap();
+}
+
+mod pactl {
+    use std::{
+        collections::HashMap,
+        io::Read,
+        process::{Command, Stdio},
+    };
+
+    use serde::Deserialize;
+    use serde_json::Value;
+
+    #[derive(Debug)]
+    pub struct SinkInput {
+        pub index: u64,
+        pub volume: f32,
+        pub properties: HashMap<String, String>,
+    }
+
+    impl SinkInput {
+        fn parse(value: &Value) -> Self {
+            let index = value
+                .get("index")
+                .and_then(|i| i.as_u64())
+                .expect("index is parsed correctly");
+
+            let volume = value
+                .get("volume")
+                .and_then(|v| {
+                    let parse_channel = |v: &Value| {
+                        v.get("db")
+                            .and_then(|db| db.as_str())
+                            .and_then(|str| str[..3].parse::<f32>().ok())
+                            .map(|v| 10f32.powf(v / 20.))
+                    };
+
+                    let left = v.get("front-left").and_then(parse_channel);
+                    let right = v.get("front-right").and_then(parse_channel);
+
+                    left.zip(right)
+                })
+                .map(|(left, right)| left + right / 2.)
+                .expect("volume is parsed correctly");
+
+            let properties: HashMap<String, String> = value
+                .get("properties")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .expect("properties is parsed correctly");
+
+            Self {
+                index,
+                volume,
+                properties,
+            }
+        }
+
+        pub fn list() -> Vec<Self> {
+            let mut child = Command::new("pactl")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .arg("--format=json")
+                .arg("list")
+                .arg("sink-inputs")
+                .spawn()
+                .expect("spawns pactl");
+
+            let stdout = child.stdout.take().unwrap();
+            let result: Vec<Value> = serde_json::from_reader(stdout).expect("parses pactl output");
+
+            child.wait().expect("pactl exited correctly");
+            result.into_iter().map(|v| Self::parse(&v)).collect()
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct Sink {
+        pub name: String,
+        pub properties: HashMap<String, String>,
+    }
+
+    impl Sink {
+        pub fn default() -> Self {
+            let mut child = Command::new("pactl")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .arg("get-default-sink")
+                .spawn()
+                .expect("spawns pactl");
+
+            let mut stdout = child.stdout.take().unwrap();
+            let mut default_sink = String::new();
+
+            stdout
+                .read_to_string(&mut default_sink)
+                .expect("read from pactl");
+
+            child.wait().expect("pactl exited correctly");
+
+            Self::list()
+                .into_iter()
+                .find(|sink| {
+                    dbg!(&sink.name, &default_sink);
+                    sink.name == default_sink.trim()
+                })
+                .expect("find default sink")
+        }
+
+        pub fn list() -> Vec<Self> {
+            let mut child = Command::new("pactl")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .arg("--format=json")
+                .arg("list")
+                .arg("sinks")
+                .spawn()
+                .expect("spawns pactl");
+
+            let stdout = child.stdout.take().unwrap();
+            let result: Vec<Self> = serde_json::from_reader(stdout).expect("parses pactl output");
+
+            child.wait().expect("pactl exited correctly");
+            result
+        }
+    }
 }
