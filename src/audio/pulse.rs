@@ -181,7 +181,7 @@ impl Source {
         let is_same_index = self.input_index() == rhs.input_index();
         let is_same_name = *self.name.read() == *rhs.name.read();
 
-        if is_same_index || is_same_name {
+        if is_same_index && is_same_name {
             return SourceComparison::Exact;
         }
 
