@@ -76,6 +76,7 @@ pub fn spawn_parec(device: Device, source: Source) -> Result<Child, AudioError> 
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env("LC_NUMERIC", "C")
+        .env("LANG", "C")
         .arg("--verbose")
         .arg("--device")
         .arg(format!("{}.monitor", device.id()))
