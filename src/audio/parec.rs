@@ -1,4 +1,4 @@
-use super::pulse::{Device, Source};
+use super::pulse_old::{Device, Source};
 
 use super::{AudioError, AudioStatus, AudioSystem};
 use lazy_static::lazy_static;
