@@ -39,7 +39,7 @@ impl PulseClient {
                 PulseClientError::Fatal("Failed to set proplist properties".to_string())
             })?;
 
-        let mut mainloop = Mainloop::new().ok_or(PulseClientError::Fatal(
+        let mainloop = Mainloop::new().ok_or(PulseClientError::Fatal(
             "Failed to create mainloop".to_string(),
         ))?;
 
@@ -51,7 +51,20 @@ impl PulseClient {
             .connect(None, ContextFlagSet::NOFLAGS, None)
             .map_err(|_| PulseClientError::ConnectionFailed)?;
 
-        // Wait for context to be ready
+        let instance = Self {
+            mainloop: Mutex::new(mainloop).into(),
+            context: Mutex::new(context).into(),
+            spec,
+        };
+
+        instance.wait_until_ready()?;
+        Ok(instance)
+    }
+
+    fn wait_until_ready(&self) -> Result<(), PulseClientError> {
+        let mut mainloop = self.mainloop.lock();
+        let context = self.context.lock();
+
         loop {
             match mainloop.iterate(false) {
                 IterateResult::Quit(_) | IterateResult::Err(_) => {
@@ -74,11 +87,7 @@ impl PulseClient {
             }
         }
 
-        Ok(Self {
-            mainloop: Mutex::new(mainloop).into(),
-            context: Mutex::new(context).into(),
-            spec,
-        })
+        Ok(())
     }
 }
 
