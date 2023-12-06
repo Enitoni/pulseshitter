@@ -51,14 +51,14 @@ impl PulseClient {
             .connect(None, ContextFlagSet::NOFLAGS, None)
             .map_err(|_| PulseClientError::ConnectionFailed)?;
 
-        let instance = Self {
+        let client = Self {
             mainloop: Mutex::new(mainloop).into(),
             context: Mutex::new(context).into(),
             spec,
         };
 
-        instance.wait_until_ready()?;
-        Ok(instance)
+        client.wait_until_ready()?;
+        Ok(client)
     }
 
     fn wait_until_ready(&self) -> Result<(), PulseClientError> {
