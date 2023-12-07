@@ -5,7 +5,9 @@ use std::{
 };
 
 use libpulse_binding::{
+    callbacks::ListResult,
     context::{
+        introspect::Introspector,
         subscribe::{Facility, InterestMaskSet},
         Context, FlagSet as ContextFlagSet, State,
     },
@@ -13,6 +15,7 @@ use libpulse_binding::{
     mainloop::standard::{IterateResult, Mainloop},
     proplist::{properties, Proplist},
     sample::{Format, Spec},
+    volume::Volume,
 };
 use parking_lot::Mutex;
 
@@ -21,6 +24,7 @@ use crate::audio::SAMPLE_RATE;
 /// Abstracts connections and interfacing with pulseaudio
 pub struct PulseClient {
     context: Arc<Mutex<Context>>,
+    introspector: Introspector,
     spec: Spec,
 }
 
@@ -64,8 +68,10 @@ impl PulseClient {
             .recv_timeout(Duration::from_millis(1000))
             .map_err(|_| PulseClientError::Fatal("Did not receive context".to_string()))??;
 
+        let introspector = context.introspect();
         let client = Self {
             context: Mutex::new(context).into(),
+            introspector,
             spec,
         };
 
@@ -146,6 +152,53 @@ impl PulseClient {
             },
         );
     }
+
+    pub fn sink_inputs(&self) -> Result<Vec<SinkInput>, PulseClientError> {
+        let (sender, receiver) = mpsc::channel();
+
+        self.introspector.get_sink_input_info_list({
+            move |list| match list {
+                ListResult::End => sender.send(ListResult::End).unwrap(),
+                ListResult::Error => sender.send(ListResult::Error).unwrap(),
+                ListResult::Item(item) => {
+                    let volume = item.volume.max().0 as f32 / Volume::NORMAL.0 as f32;
+
+                    let sink_input = SinkInput {
+                        index: item.index,
+                        props: item.proplist.clone(),
+                        name: item
+                            .name
+                            .clone()
+                            .map(|n| n.to_string())
+                            .unwrap_or("Unknown".to_string()),
+                        volume,
+                    };
+
+                    sender.send(ListResult::Item(sink_input)).unwrap();
+                }
+            }
+        });
+
+        let mut result = vec![];
+
+        loop {
+            match receiver.recv().unwrap() {
+                ListResult::End => break,
+                ListResult::Item(x) => result.push(x),
+                ListResult::Error => return Err(PulseClientError::ListError),
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SinkInput {
+    name: String,
+    index: u32,
+    volume: f32,
+    props: Proplist,
 }
 
 impl Drop for PulseClient {
@@ -158,5 +211,6 @@ impl Drop for PulseClient {
 #[derive(Debug)]
 pub enum PulseClientError {
     ConnectionFailed,
+    ListError,
     Fatal(String),
 }
