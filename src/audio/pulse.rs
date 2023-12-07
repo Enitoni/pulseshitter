@@ -1,7 +1,14 @@
-use std::sync::Arc;
+use std::{
+    sync::{mpsc, Arc},
+    thread,
+    time::Duration,
+};
 
 use libpulse_binding::{
-    context::{Context, FlagSet as ContextFlagSet, State},
+    context::{
+        subscribe::{Facility, InterestMaskSet},
+        Context, FlagSet as ContextFlagSet, State,
+    },
     def::Retval,
     mainloop::standard::{IterateResult, Mainloop},
     proplist::{properties, Proplist},
@@ -13,7 +20,6 @@ use crate::audio::SAMPLE_RATE;
 
 /// Abstracts connections and interfacing with pulseaudio
 pub struct PulseClient {
-    mainloop: Arc<Mutex<Mainloop>>,
     context: Arc<Mutex<Context>>,
     spec: Spec,
 }
@@ -39,7 +45,35 @@ impl PulseClient {
                 PulseClientError::Fatal("Failed to set proplist properties".to_string())
             })?;
 
-        let mainloop = Mainloop::new().ok_or(PulseClientError::Fatal(
+        let (context_sender, context_rec) = mpsc::channel();
+
+        thread::spawn(move || {
+            let (context, mut mainloop) = match Self::setup_mainloop(proplist) {
+                Ok(tuple) => tuple,
+                Err(e) => {
+                    context_sender.send(Err(e)).unwrap();
+                    return;
+                }
+            };
+
+            context_sender.send(Ok(context)).unwrap();
+            mainloop.run().unwrap();
+        });
+
+        let context = context_rec
+            .recv_timeout(Duration::from_millis(1000))
+            .map_err(|_| PulseClientError::Fatal("Did not receive context".to_string()))??;
+
+        let client = Self {
+            context: Mutex::new(context).into(),
+            spec,
+        };
+
+        Ok(client)
+    }
+
+    fn setup_mainloop(proplist: Proplist) -> Result<(Context, Mainloop), PulseClientError> {
+        let mut mainloop = Mainloop::new().ok_or(PulseClientError::Fatal(
             "Failed to create mainloop".to_string(),
         ))?;
 
@@ -50,20 +84,6 @@ impl PulseClient {
         context
             .connect(None, ContextFlagSet::NOFLAGS, None)
             .map_err(|_| PulseClientError::ConnectionFailed)?;
-
-        let client = Self {
-            mainloop: Mutex::new(mainloop).into(),
-            context: Mutex::new(context).into(),
-            spec,
-        };
-
-        client.wait_until_ready()?;
-        Ok(client)
-    }
-
-    fn wait_until_ready(&self) -> Result<(), PulseClientError> {
-        let mut mainloop = self.mainloop.lock();
-        let context = self.context.lock();
 
         loop {
             match mainloop.iterate(false) {
@@ -87,13 +107,50 @@ impl PulseClient {
             }
         }
 
-        Ok(())
+        Ok((context, mainloop))
+    }
+
+    pub fn subscribe_to_events(&self) {
+        let mut context = self.context.lock();
+
+        // Set up the callback that will handle events.
+        context.set_subscribe_callback(Some(Box::new(|facility_opt, operation, index| {
+            if let Some(facility) = facility_opt {
+                match facility {
+                    Facility::SinkInput => {
+                        println!(
+                            "Sink input event: index = {}, operation = {:?}",
+                            index, operation
+                        );
+                    }
+                    Facility::Source => {
+                        println!(
+                            "Source event: index = {}, operation = {:?}",
+                            index, operation
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        })));
+
+        // Subscribe to all relevant events.
+        context.subscribe(
+            InterestMaskSet::SINK_INPUT | InterestMaskSet::SOURCE,
+            |success| {
+                if !success {
+                    eprintln!("Failed to subscribe to sink and source events");
+                } else {
+                    println!("subscribed");
+                }
+            },
+        );
     }
 }
 
 impl Drop for PulseClient {
     fn drop(&mut self) {
-        self.mainloop.lock().quit(Retval(0));
+        // self.mainloop.lock().quit(Retval(0));
         self.context.lock().disconnect();
     }
 }
