@@ -16,7 +16,7 @@ use std::time::Duration;
 
 mod analysis;
 mod parec;
-mod pulse;
+pub mod pulse;
 pub mod pulse_old;
 
 pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
