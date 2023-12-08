@@ -11,13 +11,13 @@ use libpulse_binding::{
         subscribe::{Facility, InterestMaskSet},
         Context, FlagSet as ContextFlagSet, State,
     },
-    def::Retval,
     mainloop::standard::{IterateResult, Mainloop},
     proplist::{properties, Proplist},
     sample::{Format, Spec},
+    stream::{FlagSet as StreamFlagSet, PeekResult, State as StreamState, Stream},
     volume::Volume,
 };
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 
 use crate::audio::SAMPLE_RATE;
 
@@ -25,6 +25,7 @@ use crate::audio::SAMPLE_RATE;
 pub struct PulseClient {
     context: Arc<Mutex<Context>>,
     introspector: Introspector,
+    props: Proplist,
     spec: Spec,
 }
 
@@ -39,6 +40,8 @@ impl PulseClient {
         let mut proplist = Proplist::new().ok_or(PulseClientError::Fatal(
             "Failed to create proplist".to_string(),
         ))?;
+
+        let props = proplist.clone();
 
         proplist
             .set_str(properties::APPLICATION_NAME, "pulseshitter")
@@ -72,6 +75,7 @@ impl PulseClient {
         let client = Self {
             context: Mutex::new(context).into(),
             introspector,
+            props,
             spec,
         };
 
@@ -166,6 +170,7 @@ impl PulseClient {
                     let sink_input = SinkInput {
                         index: item.index,
                         props: item.proplist.clone(),
+                        sink: item.sink,
                         name: item
                             .name
                             .clone()
@@ -191,19 +196,141 @@ impl PulseClient {
 
         Ok(result)
     }
+
+    pub fn record(&self, sink_input: &SinkInput) -> Result<SinkInputStream, PulseClientError> {
+        let props = self.props.clone();
+
+        let stream = SinkInputStream::new(self.context.clone(), props, &self.spec);
+        stream.connect_to_sink_input(sink_input)?;
+        stream.set_event_callbacks();
+
+        Ok(stream)
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct SinkInput {
     name: String,
     index: u32,
+    sink: u32,
     volume: f32,
     props: Proplist,
 }
 
+/// Represents a stream of audio from a sink input
+pub struct SinkInputStream {
+    context: Arc<Mutex<Context>>,
+    stream: Arc<Mutex<Stream>>,
+    buffer: Arc<RwLock<Vec<u8>>>,
+}
+
+impl SinkInputStream {
+    fn new(context: Arc<Mutex<Context>>, mut props: Proplist, spec: &Spec) -> Self {
+        let stream = {
+            let mut context = context.lock();
+
+            let stream = Stream::new_with_proplist(
+                &mut context,
+                "pulseshitter-stream",
+                spec,
+                None,
+                &mut props,
+            )
+            .expect("Creates stream");
+
+            Arc::new(Mutex::new(stream))
+        };
+
+        Self {
+            context,
+            stream,
+            buffer: Default::default(),
+        }
+    }
+
+    fn set_event_callbacks(&self) {
+        let context = self.context.clone();
+        let mut locked_stream = self.stream.lock();
+
+        locked_stream.set_state_callback(Some(Box::new({
+            let stream = self.stream.clone();
+
+            move || match stream.lock().get_state() {
+                StreamState::Ready => {
+                    dbg!("ready!");
+                }
+                StreamState::Unconnected | StreamState::Creating => {
+                    dbg!("creating or unconnected");
+                }
+                StreamState::Terminated => {
+                    dbg!("stream terminated");
+                }
+                StreamState::Failed => {
+                    let err = context.lock().errno();
+                    dbg!(err.to_string());
+                }
+            }
+        })));
+
+        locked_stream.set_read_callback(Some(Box::new({
+            let stream = self.stream.clone();
+            let buffer = self.buffer.clone();
+
+            move |_| {
+                let mut stream = stream.lock();
+
+                match stream.peek() {
+                    Ok(result) => match result {
+                        PeekResult::Empty => {}
+                        PeekResult::Hole(_) => stream.discard().expect("Discards if hole"),
+                        PeekResult::Data(data) => {
+                            buffer.write().extend_from_slice(data);
+                            stream.discard().expect("Discards after data");
+                        }
+                    },
+                    Err(err) => {
+                        dbg!(err.to_string());
+                    }
+                }
+
+                dbg!(buffer.read().len());
+            }
+        })));
+    }
+
+    fn connect_to_sink_input(&self, sink_input: &SinkInput) -> Result<(), PulseClientError> {
+        let mut stream = self.stream.lock();
+
+        stream
+            .set_monitor_stream(sink_input.index)
+            .expect("Sets monitor stream");
+
+        stream
+            .connect_record(
+                Some(sink_input.sink.to_string().as_str()),
+                None,
+                StreamFlagSet::DONT_MOVE,
+            )
+            .expect("Connects stream for recording");
+
+        Ok(())
+    }
+}
+
+impl Drop for SinkInputStream {
+    fn drop(&mut self) {
+        let mut stream = self.stream.lock();
+
+        if stream.get_state().is_good() {
+            stream.disconnect().unwrap_or_else(|e| {
+                eprintln!("Failed to disconnect stream: {}", e);
+            })
+        }
+    }
+}
+
 impl Drop for PulseClient {
     fn drop(&mut self) {
-        // self.mainloop.lock().quit(Retval(0));
         self.context.lock().disconnect();
     }
 }
