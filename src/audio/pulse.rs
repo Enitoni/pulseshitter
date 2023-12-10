@@ -1,4 +1,5 @@
 use std::{
+    io::{self, Read},
     sync::{mpsc, Arc},
     thread,
     time::Duration,
@@ -376,6 +377,18 @@ impl Drop for SinkInputStream {
                 eprintln!("Failed to disconnect stream: {}", e);
             })
         }
+    }
+}
+
+impl Read for SinkInputStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut buffer = self.buffer.write();
+        let len = buf.len().min(buffer.len());
+
+        buf.copy_from_slice(&buffer[..len]);
+        buffer.drain(..len);
+
+        Ok(len)
     }
 }
 
