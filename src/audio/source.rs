@@ -1,13 +1,29 @@
+use super::pulse::{PulseClient, SinkInput};
+use crossbeam::atomic::AtomicCell;
+use lazy_static::lazy_static;
+use libpulse_binding::context::subscribe::Operation;
+use parking_lot::{Mutex, RwLock};
+use regex::Regex;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use crossbeam::atomic::AtomicCell;
-use libpulse_binding::context::subscribe::Operation;
-use parking_lot::{Mutex, RwLock};
+/// Due to Discord having an agreement with Spotify, you cannot actually stream Spotify audio on Discord
+/// without it pausing your Spotify playback after a few seconds when it detects you may be doing this.
+///
+/// Because of this, pulseshitter is technically a workaround, as there is no way for Discord to detect that you may be streaming Spotify through it.
+/// In order to be on the safe side regarding TOS and legal matters, Spotify streaming is disabled by default.
+///
+/// If you don't care about this, you can compile pulseshitter with the environment variable below present to enable it anyway.
+const ALLOW_SPOTIFY_STREAMING: Option<&'static str> = option_env!("ALLOW_SPOTIFY_STREAMING");
+const SPOTIFY_NAME: &str = "Spotify";
 
-use super::pulse::{PulseClient, PulseClientEvent, SinkInput, SinkInputStreamStatus};
+// These are words commonly used in vague source names that is not useful to the user
+const VAGUE_WORDS: [&str; 10] = [
+    "play", "audio", "voice", "stream", "driver", "webrtc", "engine", "playback", "callback",
+    "alsa",
+];
 
 /// Keeps track of active sources and diffing
 pub struct SourceSelector {
@@ -38,7 +54,15 @@ impl SourceSelector {
     }
 
     pub fn sources(&self) -> Vec<Source> {
-        self.stored_sources.lock().clone()
+        self.stored_sources
+            .lock()
+            .clone()
+            .into_iter()
+            .filter(|s| {
+                ALLOW_SPOTIFY_STREAMING.is_some()
+                    || s.name().to_uppercase() != SPOTIFY_NAME.to_uppercase()
+            })
+            .collect()
     }
 
     pub fn current_source(&self) -> Option<Source> {
@@ -160,7 +184,7 @@ impl Source {
 
 impl From<SinkInput> for Source {
     fn from(raw: SinkInput) -> Self {
-        let name_candidates: Vec<_> = [
+        let mut name_candidates: Vec<_> = [
             Some(raw.name.clone()),
             raw.props.get_str("application.process.binary"),
             raw.props.get_str("application.name"),
@@ -169,7 +193,20 @@ impl From<SinkInput> for Source {
         ]
         .into_iter()
         .flatten()
+        .filter_map(|s| {
+            let score = calculate_name_quality(&s);
+
+            if score > 1 {
+                Some((s, score))
+            } else {
+                None
+            }
+        })
         .collect();
+
+        name_candidates.sort_by(|(_, a), (_, b)| b.cmp(a));
+        let name_candidates: Vec<_> = name_candidates.into_iter().map(|(s, _)| s).collect();
+        let name = name_candidates[0].to_string();
 
         let application = raw
             .props
@@ -177,7 +214,6 @@ impl From<SinkInput> for Source {
             .or_else(|| raw.props.get_str("application.name"))
             .unwrap_or_else(|| "Unknown app".to_string());
 
-        let name = name_candidates[0].to_string();
         let volume = AtomicCell::new(raw.volume);
 
         Self {
@@ -189,4 +225,38 @@ impl From<SinkInput> for Source {
             age: AtomicCell::new(Instant::now()).into(),
         }
     }
+}
+
+lazy_static! {
+    static ref WORD_SPLIT_REGEX: Regex =
+        Regex::new(r"([^.,\-_\sA-Z]+)|([^.,\-_\sa-z][^.\sA-Z]+)").unwrap();
+}
+
+fn str_is_doublecase(str: &str) -> bool {
+    str.chars().filter(|c| c.is_lowercase()).count() < str.len()
+}
+
+fn calculate_name_quality(str: &str) -> i32 {
+    let mut score = 0;
+
+    score += str_is_doublecase(str) as i32;
+
+    let words: Vec<_> = WORD_SPLIT_REGEX
+        .find_iter(str)
+        .map(|m| m.as_str())
+        .collect();
+
+    score += words.into_iter().fold(0, |acc, w| {
+        let is_vague = VAGUE_WORDS
+            .iter()
+            .any(|word| w.to_uppercase() == word.to_uppercase());
+
+        if is_vague {
+            acc - 1
+        } else {
+            acc + 1
+        }
+    });
+
+    score
 }
