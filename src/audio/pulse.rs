@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Read},
+    io::Read,
     sync::{mpsc, Arc},
     thread,
     time::Duration,
@@ -206,7 +206,12 @@ impl PulseClient {
     pub fn record(&self, sink_input: &SinkInput) -> Result<SinkInputStream, PulseClientError> {
         let props = self.props.clone();
 
-        let stream = SinkInputStream::new(self.context.clone(), props, &self.spec);
+        let stream = SinkInputStream::new(
+            self.context.clone(),
+            self.event_sender.clone(),
+            props,
+            &self.spec,
+        );
         stream.connect_to_sink_input(sink_input)?;
         stream.set_event_callbacks();
 
@@ -229,6 +234,7 @@ pub enum PulseClientError {
 
 pub enum PulseClientEvent {
     SinkInput { index: u32, operation: Operation },
+    Audio(Vec<u8>),
 }
 
 #[derive(Debug, Clone)]
@@ -250,10 +256,16 @@ pub struct SinkInputStream {
     consumer: AudioConsumer,
 
     status: Arc<RwLock<SinkInputStreamStatus>>,
+    event_sender: Sender<PulseClientEvent>,
 }
 
 impl SinkInputStream {
-    fn new(context: Arc<Mutex<Context>>, mut props: Proplist, spec: &Spec) -> Self {
+    fn new(
+        context: Arc<Mutex<Context>>,
+        event_sender: Sender<PulseClientEvent>,
+        mut props: Proplist,
+        spec: &Spec,
+    ) -> Self {
         let stream = {
             let mut context = context.lock();
 
@@ -274,6 +286,7 @@ impl SinkInputStream {
         Self {
             context,
             stream,
+            event_sender,
             producer: Mutex::new(producer).into(),
             consumer: Mutex::new(consumer).into(),
             status: Default::default(),
@@ -298,7 +311,7 @@ impl SinkInputStream {
                     }
                     StreamState::Terminated => *status = SinkInputStreamStatus::Terminated,
                     StreamState::Failed => {
-                        let err: Code = context.lock().errno().try_into().expect("Error is valid");
+                        let err: Code = context.lock().errno().try_into().unwrap_or(Code::Unknown);
 
                         match err {
                             Code::Timeout => *status = SinkInputStreamStatus::TimedOut,
@@ -318,8 +331,9 @@ impl SinkInputStream {
         locked_stream.set_read_callback(Some(Box::new({
             let producer = self.producer.clone();
             let stream = self.stream.clone();
+            let sender = self.event_sender.clone();
 
-            move |size| {
+            move |_| {
                 let mut stream = stream.lock();
 
                 match stream.peek() {
@@ -327,7 +341,11 @@ impl SinkInputStream {
                         PeekResult::Empty => {}
                         PeekResult::Hole(_) => stream.discard().expect("Discards if hole"),
                         PeekResult::Data(data) => {
-                            producer.lock().push_slice(data);
+                            sender
+                                .send(PulseClientEvent::Audio(data.to_vec()))
+                                .expect("Sends audio");
+
+                            //producer.lock().push_slice(data);
                             stream.discard().expect("Discards after data");
                         }
                     },
@@ -370,7 +388,7 @@ impl SinkInputStream {
                     tlength: 0,
                     prebuf: 0,
                     minreq: 0,
-                    fragsize: (BUFFER_SIZE / 8) as u32,
+                    fragsize: (BUFFER_SIZE / 2) as u32,
                 }),
                 StreamFlagSet::DONT_MOVE,
             )
@@ -388,7 +406,11 @@ impl Drop for SinkInputStream {
     fn drop(&mut self) {
         let mut stream = self.stream.lock();
 
-        if stream.get_state().is_good() {
+        stream.set_suspended_callback(None);
+        stream.set_read_callback(None);
+        stream.set_event_callback(None);
+
+        if let StreamState::Ready | StreamState::Creating = stream.get_state() {
             stream.disconnect().unwrap_or_else(|e| {
                 eprintln!("Failed to disconnect stream: {}", e);
             })

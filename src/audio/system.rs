@@ -6,12 +6,14 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
+use ringbuf::{consumer, HeapConsumer, HeapProducer, HeapRb};
 use songbird::input::{reader::MediaSource, Codec, Container, Input, Reader};
 
 use super::{
     analysis::{spawn_analysis_thread, StereoMeter},
-    pulse::{PulseClient, PulseClientError, SinkInputStream, SinkInputStreamStatus},
+    pulse::{
+        PulseClient, PulseClientError, PulseClientEvent, SinkInputStream, SinkInputStreamStatus,
+    },
     source::{Source, SourceSelector},
     AudioConsumer, AudioProducer, BUFFER_SIZE, LATENCY_IN_SECONDS, SAMPLE_IN_BYTES, SAMPLE_RATE,
 };
@@ -43,6 +45,8 @@ pub struct AudioContext {
 impl AudioSystem {
     pub fn new() -> Result<Arc<Self>, PulseClientError> {
         let client = Arc::new(PulseClient::new()?);
+        client.subscribe_to_events();
+
         let selector = Arc::new(SourceSelector::new(client.clone()));
 
         let (audio_producer, audio_consumer) = HeapRb::new(BUFFER_SIZE).split();
@@ -128,13 +132,13 @@ fn spawn_audio_thread(audio: Arc<AudioSystem>) {
             let mut time_to_wait = LATENCY_IN_SECONDS;
             let mut buf = [0; BUFFER_SIZE];
 
-            if let Some(stream) = &mut *stream.lock() {
-                let bytes_read = stream.read(&mut buf).unwrap_or_default();
+            //if let Some(stream) = &mut *stream.lock() {
+            //    let bytes_read = stream.read(&mut buf).unwrap_or_default();
+            //
+            //    producer.lock().push_slice(&buf);
+            //}
 
-                producer.lock().push_slice(&buf);
-            }
-
-            audio.meter.write(&buf);
+            //audio.meter.write(&buf);
             thread::sleep(Duration::from_secs_f32(time_to_wait));
         }
     };
@@ -148,11 +152,19 @@ fn spawn_audio_thread(audio: Arc<AudioSystem>) {
 fn spawn_event_thread(audio: Arc<AudioSystem>) {
     let run = move || {
         let events = audio.client.events.clone();
+        let mut producer = audio.producer.lock();
 
         loop {
-            let x = events.recv().unwrap();
-            audio.selector.handle_sink_input_event(x);
-            audio.refresh_stream();
+            match events.recv().unwrap() {
+                PulseClientEvent::SinkInput { index, operation } => {
+                    audio.selector.handle_sink_input_event(index, operation);
+                    audio.refresh_stream();
+                }
+                PulseClientEvent::Audio(data) => {
+                    producer.push_slice(&data);
+                    audio.meter.write(&data);
+                }
+            };
         }
     };
 
@@ -187,7 +199,9 @@ impl Read for AudioStream {
         let stereo = SAMPLE_IN_BYTES * 2;
         let safe_length = buf.len() / stereo * stereo;
 
-        consumer.read(&mut buf[..safe_length]).unwrap_or_default();
+        consumer
+            .read_exact(&mut buf[..safe_length])
+            .unwrap_or_default();
 
         Ok(safe_length)
     }
