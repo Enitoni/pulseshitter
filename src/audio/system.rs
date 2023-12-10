@@ -92,8 +92,6 @@ impl AudioSystem {
                 .record(&source.sink_input())
                 .expect("Creates recording stream");
 
-            dbg!("creates new stream");
-
             *self.stream.lock() = Some(stream);
         } else {
             *self.stream.lock() = None;
@@ -157,8 +155,23 @@ fn spawn_event_thread(audio: Arc<AudioSystem>) {
         loop {
             match events.recv().unwrap() {
                 PulseClientEvent::SinkInput { index, operation } => {
+                    let old_id = audio
+                        .selector
+                        .current_source()
+                        .map(|s| s.index())
+                        .unwrap_or_default();
+
                     audio.selector.handle_sink_input_event(index, operation);
-                    audio.refresh_stream();
+
+                    let new_id = audio
+                        .selector
+                        .current_source()
+                        .map(|s| s.index())
+                        .unwrap_or_default();
+
+                    if new_id != old_id {
+                        audio.refresh_stream();
+                    }
                 }
                 PulseClientEvent::Audio(data) => {
                     producer.push_slice(&data);
