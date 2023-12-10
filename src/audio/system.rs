@@ -9,7 +9,7 @@ use ringbuf::HeapRb;
 use songbird::input::{reader::MediaSource, Codec, Container, Input, Reader};
 
 use super::{
-    analysis::{spawn_analysis_thread, StereoMeter},
+    analysis::{raw_samples_from_bytes, spawn_analysis_thread, StereoMeter},
     pulse::{
         PulseClient, PulseClientError, PulseClientEvent, SinkInputStream, SinkInputStreamStatus,
     },
@@ -146,8 +146,16 @@ fn spawn_event_thread(audio: Arc<AudioSystem>) {
                     }
                 }
                 PulseClientEvent::Audio(data) => {
-                    producer.push_slice(&data);
-                    audio.meter.write(&data);
+                    let current_source_volume = audio
+                        .selector
+                        .current_source()
+                        .map(|s| s.volume())
+                        .unwrap_or(1.);
+
+                    let normalized_bytes = normalize_volume(&data, current_source_volume);
+
+                    producer.push_slice(&normalized_bytes);
+                    audio.meter.write(&normalized_bytes);
                 }
             };
         }
@@ -206,4 +214,16 @@ impl MediaSource for AudioStream {
     fn is_seekable(&self) -> bool {
         false
     }
+}
+
+fn normalize_volume(bytes: &[u8], incoming_volume: f32) -> Vec<u8> {
+    let reciprocal = 1. / incoming_volume;
+    let db_loudness = 10. * reciprocal.log(3.);
+    let signal_factor = 10f32.powf(db_loudness / 20.);
+
+    raw_samples_from_bytes(bytes)
+        .into_iter()
+        .map(|s| s * signal_factor)
+        .flat_map(|s| s.to_le_bytes())
+        .collect()
 }
