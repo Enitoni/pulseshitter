@@ -11,6 +11,7 @@ use libpulse_binding::{
         subscribe::{Facility, InterestMaskSet},
         Context, FlagSet as ContextFlagSet, State,
     },
+    error::Code,
     mainloop::standard::{IterateResult, Mainloop},
     proplist::{properties, Proplist},
     sample::{Format, Spec},
@@ -222,6 +223,7 @@ pub struct SinkInputStream {
     context: Arc<Mutex<Context>>,
     stream: Arc<Mutex<Stream>>,
     buffer: Arc<RwLock<Vec<u8>>>,
+    status: Arc<RwLock<SinkInputStreamStatus>>,
 }
 
 impl SinkInputStream {
@@ -245,6 +247,7 @@ impl SinkInputStream {
             context,
             stream,
             buffer: Default::default(),
+            status: Default::default(),
         }
     }
 
@@ -254,21 +257,32 @@ impl SinkInputStream {
 
         locked_stream.set_state_callback(Some(Box::new({
             let stream = self.stream.clone();
+            let status = self.status.clone();
 
-            move || match stream.lock().get_state() {
-                StreamState::Ready => {
-                    dbg!("ready!");
+            move || {
+                let mut status = status.write();
+
+                match stream.lock().get_state() {
+                    StreamState::Ready => *status = SinkInputStreamStatus::Connected,
+                    StreamState::Unconnected | StreamState::Creating => {
+                        *status = SinkInputStreamStatus::Connecting
+                    }
+                    StreamState::Terminated => *status = SinkInputStreamStatus::Terminated,
+                    StreamState::Failed => {
+                        let err: Code = context.lock().errno().try_into().expect("Error is valid");
+
+                        match err {
+                            Code::Timeout => *status = SinkInputStreamStatus::TimedOut,
+                            x => {
+                                *status = SinkInputStreamStatus::Failed(
+                                    x.to_string().unwrap_or_else(|| "Unknown".to_string()),
+                                )
+                            }
+                        }
+                    }
                 }
-                StreamState::Unconnected | StreamState::Creating => {
-                    dbg!("creating or unconnected");
-                }
-                StreamState::Terminated => {
-                    dbg!("stream terminated");
-                }
-                StreamState::Failed => {
-                    let err = context.lock().errno();
-                    dbg!(err.to_string());
-                }
+
+                dbg!(&status);
             }
         })));
 
@@ -288,12 +302,26 @@ impl SinkInputStream {
                             stream.discard().expect("Discards after data");
                         }
                     },
-                    Err(err) => {
-                        dbg!(err.to_string());
+                    Err(_) => {
+                        unimplemented!()
                     }
                 }
+            }
+        })));
 
-                dbg!(buffer.read().len());
+        locked_stream.set_suspended_callback(Some(Box::new({
+            let stream = self.stream.clone();
+            let status = self.status.clone();
+
+            move || {
+                let stream = stream.lock();
+                let mut status = status.write();
+
+                if stream.is_suspended().unwrap_or_default() {
+                    *status = SinkInputStreamStatus::Suspended
+                } else {
+                    *status = SinkInputStreamStatus::Connected
+                }
             }
         })));
     }
@@ -327,6 +355,18 @@ impl Drop for SinkInputStream {
             })
         }
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum SinkInputStreamStatus {
+    #[default]
+    Idle,
+    TimedOut,
+    Connected,
+    Suspended,
+    Terminated,
+    Connecting,
+    Failed(String),
 }
 
 impl Drop for PulseClient {
