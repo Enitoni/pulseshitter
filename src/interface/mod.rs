@@ -188,5 +188,5 @@ const LOGO: &str = "
 █▀▀ █▄█ █▄▄ ▄█ ██▄ ▄█ █▀█ █ ░█░ ░█░ ██▄ █▀▄
 ";
 
-pub const TARGET_FPS: u32 = 90;
+pub const TARGET_FPS: u32 = 144;
 pub const MS_PER_FRAME: f32 = 1000. / TARGET_FPS as f32;
