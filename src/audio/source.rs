@@ -272,8 +272,8 @@ pub enum BrowserKind {
 }
 
 impl BrowserKind {
-    const FIREFOX: &str = "Firefox";
-    const CHROME: &str = "Chrome";
+    const FIREFOX: &'static str = "Firefox";
+    const CHROME: &'static str = "Chrome";
 
     fn parse<T: AsRef<str>>(name: T) -> Option<Self> {
         match name.as_ref().to_uppercase() {
