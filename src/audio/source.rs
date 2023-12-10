@@ -5,9 +5,11 @@ use libpulse_binding::context::subscribe::Operation;
 use parking_lot::{Mutex, RwLock};
 use regex::Regex;
 use std::{
+    fmt::Display,
     sync::Arc,
     time::{Duration, Instant},
 };
+use strsim::jaro;
 
 /// Due to Discord having an agreement with Spotify, you cannot actually stream Spotify audio on Discord
 /// without it pausing your Spotify playback after a few seconds when it detects you may be doing this.
@@ -66,7 +68,7 @@ impl SourceSelector {
     }
 
     pub fn current_source(&self) -> Option<Source> {
-        self.current_source.lock().clone()
+        self.current_source.lock().clone().filter(|s| s.available())
     }
 
     pub fn selected_source(&self) -> Option<Source> {
@@ -107,7 +109,17 @@ impl SourceSelector {
 
         match operation {
             Operation::New => {
-                current_sources.push(source.expect("New source exists by index"));
+                let selected_source = self.selected_source();
+                let new_source = source.expect("New source exists by index");
+
+                let new_as_selected = selected_source
+                    .filter(|s| !s.available() && s.compare(&new_source).is_similar_enough());
+
+                if let Some(selected) = new_as_selected {
+                    selected.update(new_source);
+                } else {
+                    current_sources.push(new_source);
+                }
             }
             Operation::Changed => {
                 existing_source
@@ -126,6 +138,7 @@ impl SourceSelector {
 /// A sink input simplified for ease of use
 #[derive(Debug, Clone)]
 pub struct Source {
+    kind: SourceKind,
     sink_input: Arc<Mutex<SinkInput>>,
 
     /// The best fitting name for this source
@@ -142,6 +155,13 @@ pub struct Source {
     volume: Arc<AtomicCell<f32>>,
 }
 
+#[derive(Debug)]
+enum SourceComparison {
+    Exact,
+    Partial(f64),
+    None,
+}
+
 impl Source {
     /// How long should a source persist for after it is unavailable
     const MAX_LIFESPAN: Duration = Duration::from_secs(60);
@@ -154,6 +174,24 @@ impl Source {
 
         self.volume.store(incoming.volume.load());
         self.available.store(true);
+    }
+
+    /// Checks to see how similar this source is to an old one
+    fn compare(&self, rhs: &Source) -> SourceComparison {
+        // It is unlikely that there will ever be conflicts, so if the indices match, this is most likely the same source.
+        let is_same_index = self.index() == rhs.index();
+        let is_same_name = *self.name.read() == *rhs.name.read();
+
+        if is_same_index || is_same_name {
+            return SourceComparison::Exact;
+        }
+
+        if self.application != rhs.application {
+            return SourceComparison::None;
+        }
+
+        let score = jaro(&self.name.read(), &rhs.name.read());
+        SourceComparison::Partial(score)
     }
 
     fn remove(&self) {
@@ -185,6 +223,97 @@ impl Source {
     }
 }
 
+impl SourceComparison {
+    fn is_similar_enough(&self) -> bool {
+        dbg!(&self);
+
+        match self {
+            SourceComparison::Partial(score) => *score > 0.3,
+            SourceComparison::Exact => true,
+            SourceComparison::None => false,
+        }
+    }
+}
+
+/// When apps like browsers have multiple tabs, there is no way to differentiate the source from each one without covering these edge cases.
+/// That is the purpose of this enum.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SourceKind {
+    Standalone,
+    BrowserTab(BrowserKind),
+}
+
+impl SourceKind {
+    fn parse<T: AsRef<str>>(candidates: &[T]) -> Self {
+        candidates
+            .iter()
+            .map(AsRef::as_ref)
+            .map(BrowserKind::parse)
+            .find_map(|k| k.map(Into::into))
+            .unwrap_or(Self::Standalone)
+    }
+
+    fn determine_name<T: AsRef<str>>(&self, candidates: &[T]) -> String {
+        match self {
+            SourceKind::BrowserTab(b) => b.determine_tab_name(candidates),
+            SourceKind::Standalone => candidates
+                .iter()
+                .map(AsRef::as_ref)
+                .map(ToOwned::to_owned)
+                .next()
+                .unwrap_or_else(|| "Unidentifiable audio source".to_string()),
+        }
+    }
+}
+
+/// Currently supported Browser edgecases
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BrowserKind {
+    Firefox,
+    Chrome,
+}
+
+impl BrowserKind {
+    const FIREFOX: &str = "Firefox";
+    const CHROME: &str = "Chrome";
+
+    fn parse<T: AsRef<str>>(name: T) -> Option<Self> {
+        match name.as_ref().to_uppercase() {
+            x if x == Self::FIREFOX.to_uppercase() => Self::Firefox.into(),
+            x if x == Self::CHROME.to_uppercase() => Self::Chrome.into(),
+            _ => None,
+        }
+    }
+
+    fn determine_tab_name<T: AsRef<str>>(&self, candidates: &[T]) -> String {
+        let browser_name = self.to_string();
+
+        candidates
+            .iter()
+            .map(AsRef::as_ref)
+            .map(ToOwned::to_owned)
+            .find(|c| c.to_uppercase() != browser_name.to_uppercase())
+            .unwrap_or_else(|| format!("Unidentifiable {} Tab", browser_name))
+    }
+}
+
+impl Display for BrowserKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Self::Firefox => Self::FIREFOX,
+            Self::Chrome => Self::CHROME,
+        };
+
+        write!(f, "{}", name)
+    }
+}
+
+impl From<BrowserKind> for SourceKind {
+    fn from(value: BrowserKind) -> Self {
+        Self::BrowserTab(value)
+    }
+}
+
 impl From<SinkInput> for Source {
     fn from(raw: SinkInput) -> Self {
         let mut name_candidates: Vec<_> = [
@@ -209,7 +338,9 @@ impl From<SinkInput> for Source {
 
         name_candidates.sort_by(|(_, a), (_, b)| b.cmp(a));
         let name_candidates: Vec<_> = name_candidates.into_iter().map(|(s, _)| s).collect();
-        let name = name_candidates[0].to_string();
+
+        let kind = SourceKind::parse(&name_candidates);
+        let name = kind.determine_name(&name_candidates);
 
         let application = raw
             .props
@@ -220,6 +351,7 @@ impl From<SinkInput> for Source {
         let volume = AtomicCell::new(raw.volume);
 
         Self {
+            kind,
             application,
             volume: volume.into(),
             name: RwLock::new(name).into(),
