@@ -26,26 +26,25 @@ impl AppSelector {
 
     pub fn navigate(&mut self, amount: isize) {
         let mut selected_index = self.selected_index.lock().unwrap();
-        let app_length = self.context.audio.pulse.sources().len() as isize;
+        let app_length = self.context.audio.sources().len() as isize;
 
         let new_index = ((*selected_index) as isize + amount).rem_euclid(app_length);
         *selected_index = new_index as usize;
     }
 
     pub fn select(&self) {
-        let pulse = &self.context.audio.pulse;
-
-        let selected_source = pulse.current_source();
+        let selected_source = self.context.audio.current_source();
         let selected_index = self.selected_index.lock().unwrap();
+        let sources = self.context.audio.sources();
 
-        if let Some(source) = pulse.sources().get(*selected_index) {
+        if let Some(source) = sources.get(*selected_index) {
             let selected_app_index = selected_source
                 .as_ref()
-                .map(|a| a.input_index())
+                .map(|a| a.index())
                 .unwrap_or_default();
 
             // Stop the stream if pressing play on the same one
-            if source.input_index() == selected_app_index {
+            if source.index() == selected_app_index {
                 self.context.dispatch_action(Action::StopStream);
             } else {
                 self.context
@@ -57,7 +56,7 @@ impl AppSelector {
 
 impl Widget for &AppSelector {
     fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        let pulse = &self.context.audio.pulse;
+        let audio = &self.context.audio;
         let discord = &self.context.discord;
 
         let block = Block::default()
@@ -73,12 +72,12 @@ impl Widget for &AppSelector {
 
         block.render(area, buf);
 
-        let sources = pulse.sources();
+        let sources = audio.sources();
 
         let selected_index = self.selected_index.lock().unwrap();
 
-        let selected_source = pulse.selected_source();
-        let current_source = pulse.current_source();
+        let selected_source = audio.selected_source();
+        let current_source = audio.current_source();
 
         let discord_status = discord.current_status();
         let is_discord_ready = matches!(discord_status, DiscordStatus::Active(_));
@@ -90,12 +89,12 @@ impl Widget for &AppSelector {
 
             let is_active = current_source
                 .as_ref()
-                .map(|f| f.input_index() == source.input_index())
+                .map(|f| f.index() == source.index())
                 .unwrap_or_default();
 
             let is_selected = selected_source
                 .as_ref()
-                .map(|f| f.input_index() == source.input_index())
+                .map(|f| f.index() == source.index())
                 .unwrap_or_default();
 
             let paragraph_area = tui::layout::Rect::new(

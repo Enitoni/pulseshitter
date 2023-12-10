@@ -45,7 +45,11 @@ impl SourceSelector {
         self.current_source.lock().clone()
     }
 
-    pub fn select(&self, source: Option<Source>) {
+    pub fn selected_source(&self) -> Option<Source> {
+        self.selected_source.lock().clone()
+    }
+
+    pub(super) fn select(&self, source: Option<Source>) {
         match source {
             Some(x) => {
                 *self.current_source.lock() = Some(x.clone());
@@ -139,12 +143,20 @@ impl Source {
         self.sink_input.lock().clone()
     }
 
+    pub fn index(&self) -> u32 {
+        self.sink_input.lock().index
+    }
+
     pub fn available(&self) -> bool {
         self.available.load()
     }
 
     pub fn volume(&self) -> f32 {
         self.volume.load()
+    }
+
+    pub fn name(&self) -> String {
+        self.name.read().clone()
     }
 }
 

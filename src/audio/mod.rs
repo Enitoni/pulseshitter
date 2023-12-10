@@ -1,40 +1,28 @@
-use self::analysis::{raw_samples_from_bytes, spawn_analysis_thread, StereoMeter};
-use self::parec::{spawn_event_thread, spawn_parec, Stderr};
-use self::pulse_old::{spawn_pulse_thread, Source};
-use crossbeam::atomic::AtomicCell;
-use crossbeam::channel::{unbounded, Receiver, Sender};
-use pulse_old::PulseAudio;
-use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
-use songbird::input::reader::MediaSource;
-use songbird::input::{Codec, Container, Input, Reader};
-use std::fmt::Display;
-use std::io::{BufReader, Read, Seek};
-use std::process::{Child, ChildStderr, ChildStdout};
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
-
 mod analysis;
-mod parec;
 pub mod pulse;
-pub mod pulse_old;
 mod source;
 mod system;
 
-pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
-pub type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;
-pub type CurrentAudioStatus = Arc<Mutex<AudioStatus>>;
+use std::sync::Arc;
 
-pub type AudioTime = Arc<AtomicCell<f32>>;
-pub type AudioLatency = Arc<AtomicCell<u32>>;
+use parking_lot::Mutex;
+use ringbuf::{HeapConsumer, HeapProducer};
+pub use source::*;
+pub use system::*;
 
 pub type Sample = f32;
+
+pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
+pub type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;
 
 pub const SAMPLE_RATE: usize = 48000;
 pub const SAMPLE_IN_BYTES: usize = 4;
 
-pub const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * 2048;
+pub const LATENCY_IN_SECONDS: f32 = 0.05;
+pub const BUFFER_SIZE: usize =
+    (SAMPLE_IN_BYTES * 2) * (SAMPLE_RATE as f32 * LATENCY_IN_SECONDS) as usize;
 
+/*
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
     pub status: CurrentAudioStatus,
@@ -303,3 +291,4 @@ pub fn spawn_audio_thread(audio: Arc<AudioSystem>) {
         .spawn(run)
         .unwrap();
 }
+*/

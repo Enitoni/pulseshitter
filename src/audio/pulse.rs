@@ -13,6 +13,7 @@ use libpulse_binding::{
         subscribe::{Facility, InterestMaskSet, Operation},
         Context, FlagSet as ContextFlagSet, State,
     },
+    def::BufferAttr,
     error::Code,
     mainloop::standard::{IterateResult, Mainloop},
     proplist::{properties, Proplist},
@@ -21,8 +22,11 @@ use libpulse_binding::{
     volume::Volume,
 };
 use parking_lot::{Mutex, RwLock};
+use ringbuf::HeapRb;
 
 use crate::audio::SAMPLE_RATE;
+
+use super::{AudioConsumer, AudioProducer, BUFFER_SIZE, SAMPLE_IN_BYTES};
 
 /// Abstracts connections and interfacing with pulseaudio
 pub struct PulseClient {
@@ -241,7 +245,10 @@ pub struct SinkInput {
 pub struct SinkInputStream {
     context: Arc<Mutex<Context>>,
     stream: Arc<Mutex<Stream>>,
-    buffer: Arc<RwLock<Vec<u8>>>,
+
+    producer: AudioProducer,
+    consumer: AudioConsumer,
+
     status: Arc<RwLock<SinkInputStreamStatus>>,
 }
 
@@ -262,10 +269,13 @@ impl SinkInputStream {
             Arc::new(Mutex::new(stream))
         };
 
+        let (producer, consumer) = HeapRb::new(BUFFER_SIZE * 5).split();
+
         Self {
             context,
             stream,
-            buffer: Default::default(),
+            producer: Mutex::new(producer).into(),
+            consumer: Mutex::new(consumer).into(),
             status: Default::default(),
         }
     }
@@ -306,10 +316,10 @@ impl SinkInputStream {
         })));
 
         locked_stream.set_read_callback(Some(Box::new({
+            let producer = self.producer.clone();
             let stream = self.stream.clone();
-            let buffer = self.buffer.clone();
 
-            move |_| {
+            move |size| {
                 let mut stream = stream.lock();
 
                 match stream.peek() {
@@ -317,7 +327,7 @@ impl SinkInputStream {
                         PeekResult::Empty => {}
                         PeekResult::Hole(_) => stream.discard().expect("Discards if hole"),
                         PeekResult::Data(data) => {
-                            buffer.write().extend_from_slice(data);
+                            producer.lock().push_slice(data);
                             stream.discard().expect("Discards after data");
                         }
                     },
@@ -355,7 +365,13 @@ impl SinkInputStream {
         stream
             .connect_record(
                 Some(sink_input.sink.to_string().as_str()),
-                None,
+                Some(&BufferAttr {
+                    maxlength: std::u32::MAX,
+                    tlength: 0,
+                    prebuf: 0,
+                    minreq: 0,
+                    fragsize: (BUFFER_SIZE / 8) as u32,
+                }),
                 StreamFlagSet::DONT_MOVE,
             )
             .expect("Connects stream for recording");
@@ -382,13 +398,13 @@ impl Drop for SinkInputStream {
 
 impl Read for SinkInputStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut buffer = self.buffer.write();
-        let len = buf.len().min(buffer.len());
+        let mut consumer = self.consumer.lock();
 
-        buf.copy_from_slice(&buffer[..len]);
-        buffer.drain(..len);
+        if consumer.len() >= buf.len() * 2 {
+            return consumer.read(buf);
+        }
 
-        Ok(len)
+        Ok(0)
     }
 }
 

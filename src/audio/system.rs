@@ -10,14 +10,13 @@ use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
 use songbird::input::{reader::MediaSource, Codec, Container, Input, Reader};
 
 use super::{
-    analysis::StereoMeter,
+    analysis::{spawn_analysis_thread, StereoMeter},
     pulse::{PulseClient, PulseClientError, SinkInputStream, SinkInputStreamStatus},
     source::{Source, SourceSelector},
-    BUFFER_SIZE, SAMPLE_IN_BYTES, SAMPLE_RATE,
+    AudioConsumer, AudioProducer, BUFFER_SIZE, LATENCY_IN_SECONDS, SAMPLE_IN_BYTES, SAMPLE_RATE,
 };
 
-type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
-type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;
+pub type AudioStatus = SinkInputStreamStatus;
 
 /// Manages all audio related stuff
 pub struct AudioSystem {
@@ -30,6 +29,15 @@ pub struct AudioSystem {
     consumer: AudioConsumer,
 
     meter: Arc<StereoMeter>,
+}
+
+#[derive(Clone)]
+pub struct AudioContext {
+    pub meter: Arc<StereoMeter>,
+    selector: Arc<SourceSelector>,
+
+    // TODO: This is temporary
+    stream: Arc<Mutex<Option<SinkInputStream>>>,
 }
 
 impl AudioSystem {
@@ -48,17 +56,10 @@ impl AudioSystem {
             consumer: Mutex::new(audio_consumer).into(),
         });
 
+        spawn_analysis_thread(audio.meter.clone());
         spawn_audio_thread(audio.clone());
         spawn_event_thread(audio.clone());
         Ok(audio)
-    }
-
-    pub fn status(&self) -> SinkInputStreamStatus {
-        self.stream
-            .lock()
-            .as_ref()
-            .map(|x| x.status())
-            .unwrap_or_default()
     }
 
     pub fn select(&self, source: Option<Source>) {
@@ -70,6 +71,14 @@ impl AudioSystem {
         AudioStream(self.consumer.clone())
     }
 
+    pub fn context(&self) -> AudioContext {
+        AudioContext {
+            meter: self.meter.clone(),
+            stream: self.stream.clone(),
+            selector: self.selector.clone(),
+        }
+    }
+
     fn refresh_stream(&self) {
         let current_source = self.selector.current_source();
 
@@ -79,8 +88,34 @@ impl AudioSystem {
                 .record(&source.sink_input())
                 .expect("Creates recording stream");
 
+            dbg!("creates new stream");
+
             *self.stream.lock() = Some(stream);
+        } else {
+            *self.stream.lock() = None;
         }
+    }
+}
+
+impl AudioContext {
+    pub fn sources(&self) -> Vec<Source> {
+        self.selector.sources()
+    }
+
+    pub fn current_source(&self) -> Option<Source> {
+        self.selector.current_source()
+    }
+
+    pub fn selected_source(&self) -> Option<Source> {
+        self.selector.selected_source()
+    }
+
+    pub fn status(&self) -> SinkInputStreamStatus {
+        self.stream
+            .lock()
+            .as_ref()
+            .map(|x| x.status())
+            .unwrap_or_default()
     }
 }
 
@@ -89,18 +124,17 @@ fn spawn_audio_thread(audio: Arc<AudioSystem>) {
         let producer = audio.producer.clone();
         let stream = audio.stream.clone();
 
-        let time_to_wait = 1. / SAMPLE_RATE as f32;
-
         loop {
-            if let Some(stream) = &mut *stream.lock() {
-                let mut buf = [0; BUFFER_SIZE];
+            let mut time_to_wait = LATENCY_IN_SECONDS;
+            let mut buf = [0; BUFFER_SIZE];
 
+            if let Some(stream) = &mut *stream.lock() {
                 let bytes_read = stream.read(&mut buf).unwrap_or_default();
 
                 producer.lock().push_slice(&buf);
-                audio.meter.write(&buf);
             }
 
+            audio.meter.write(&buf);
             thread::sleep(Duration::from_secs_f32(time_to_wait));
         }
     };
