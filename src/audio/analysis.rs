@@ -52,6 +52,13 @@ impl Meter {
         }
     }
 
+    pub fn drain(&self, amount: usize) {
+        let mut buffer = self.buffer.lock();
+
+        buffer.extend(vec![0.; amount]);
+        buffer.drain(..amount);
+    }
+
     pub fn process(&self) {
         process_multiversioned(self)
     }
@@ -133,6 +140,11 @@ impl StereoMeter {
         self.right.process();
     }
 
+    pub fn drain(&self, amount: usize) {
+        self.left.drain(amount);
+        self.right.drain(amount);
+    }
+
     pub fn value(&self) -> (f32, f32) {
         (self.left.value(), self.right.value())
     }
@@ -174,10 +186,12 @@ pub fn raw_samples_from_bytes(bytes: &[u8]) -> Vec<Sample> {
 pub fn spawn_analysis_thread(meter: Arc<StereoMeter>) {
     let run = move || {
         let tick_rate = 1. / TARGET_FPS as f32;
+        let samples_to_drain = (SAMPLE_RATE as f32 * tick_rate) as usize;
 
         loop {
             let meter = meter.clone();
             meter.process();
+            meter.drain(samples_to_drain);
 
             thread::sleep(Duration::from_secs_f32(tick_rate));
         }
