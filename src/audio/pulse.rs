@@ -4,11 +4,12 @@ use std::{
     time::Duration,
 };
 
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use libpulse_binding::{
     callbacks::ListResult,
     context::{
         introspect::Introspector,
-        subscribe::{Facility, InterestMaskSet},
+        subscribe::{Facility, InterestMaskSet, Operation},
         Context, FlagSet as ContextFlagSet, State,
     },
     error::Code,
@@ -28,6 +29,9 @@ pub struct PulseClient {
     introspector: Introspector,
     props: Proplist,
     spec: Spec,
+
+    pub(super) events: Receiver<PulseClientEvent>,
+    event_sender: Sender<PulseClientEvent>,
 }
 
 impl PulseClient {
@@ -73,7 +77,11 @@ impl PulseClient {
             .map_err(|_| PulseClientError::Fatal("Did not receive context".to_string()))??;
 
         let introspector = context.introspect();
+        let (sender, receiver) = unbounded();
+
         let client = Self {
+            event_sender: sender,
+            events: receiver,
             context: Mutex::new(context).into(),
             introspector,
             props,
@@ -123,25 +131,17 @@ impl PulseClient {
 
     pub fn subscribe_to_events(&self) {
         let mut context = self.context.lock();
+        let sender = self.event_sender.clone();
 
         // Set up the callback that will handle events.
-        context.set_subscribe_callback(Some(Box::new(|facility_opt, operation, index| {
-            if let Some(facility) = facility_opt {
-                match facility {
-                    Facility::SinkInput => {
-                        println!(
-                            "Sink input event: index = {}, operation = {:?}",
-                            index, operation
-                        );
-                    }
-                    Facility::Source => {
-                        println!(
-                            "Source event: index = {}, operation = {:?}",
-                            index, operation
-                        );
-                    }
-                    _ => {}
-                }
+        context.set_subscribe_callback(Some(Box::new(move |facility_opt, operation, index| {
+            if let Some(Facility::SinkInput) = facility_opt {
+                sender
+                    .send(PulseClientEvent::SinkInput {
+                        index,
+                        operation: operation.expect("SinkEvent always has an operation"),
+                    })
+                    .expect("Send event")
             }
         })));
 
@@ -209,13 +209,30 @@ impl PulseClient {
     }
 }
 
+impl Drop for PulseClient {
+    fn drop(&mut self) {
+        self.context.lock().disconnect();
+    }
+}
+
+#[derive(Debug)]
+pub enum PulseClientError {
+    ConnectionFailed,
+    ListError,
+    Fatal(String),
+}
+
+pub enum PulseClientEvent {
+    SinkInput { index: u32, operation: Operation },
+}
+
 #[derive(Debug, Clone)]
 pub struct SinkInput {
-    name: String,
-    index: u32,
-    sink: u32,
-    volume: f32,
-    props: Proplist,
+    pub(super) name: String,
+    pub(super) index: u32,
+    pub(super) sink: u32,
+    pub(super) volume: f32,
+    pub(super) props: Proplist,
 }
 
 /// Represents a stream of audio from a sink input
@@ -367,17 +384,4 @@ pub enum SinkInputStreamStatus {
     Terminated,
     Connecting,
     Failed(String),
-}
-
-impl Drop for PulseClient {
-    fn drop(&mut self) {
-        self.context.lock().disconnect();
-    }
-}
-
-#[derive(Debug)]
-pub enum PulseClientError {
-    ConnectionFailed,
-    ListError,
-    Fatal(String),
 }
