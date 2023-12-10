@@ -181,10 +181,10 @@ impl Widget for &AudioModule {
         let status = self.audio.status();
 
         match status {
-            x => self.render_idle(block_inner, buf),
             AudioStatus::Connecting => self.render_connecting(block_inner, buf),
-            AudioStatus::Failed(err) => self.render_error(block_inner, buf),
+            AudioStatus::Failed(_) => self.render_error(block_inner, buf),
             AudioStatus::Connected => self.render_connected(block_inner, buf),
+            _ => self.render_idle(block_inner, buf),
         }
     }
 }
