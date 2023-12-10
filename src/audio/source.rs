@@ -7,7 +7,7 @@ use crossbeam::atomic::AtomicCell;
 use libpulse_binding::context::subscribe::Operation;
 use parking_lot::{Mutex, RwLock};
 
-use super::pulse::{PulseClient, PulseClientEvent, SinkInput};
+use super::pulse::{PulseClient, PulseClientEvent, SinkInput, SinkInputStreamStatus};
 
 /// Keeps track of active sources and diffing
 pub struct SourceSelector {
@@ -41,6 +41,10 @@ impl SourceSelector {
         self.stored_sources.lock().clone()
     }
 
+    pub fn current_source(&self) -> Option<Source> {
+        self.current_source.lock().clone()
+    }
+
     pub fn select(&self, source: Option<Source>) {
         match source {
             Some(x) => {
@@ -54,11 +58,17 @@ impl SourceSelector {
         }
     }
 
-    fn handle_sink_input_event(&self, sink_inputs: Vec<SinkInput>, event: PulseClientEvent) {
+    pub fn handle_sink_input_event(&self, event: PulseClientEvent) {
         let PulseClientEvent::SinkInput { index, operation } = event;
 
         let mut current_sources = self.stored_sources.lock();
-        let new_sources: Vec<Source> = sink_inputs.into_iter().map(|f| f.into()).collect();
+        let new_sources: Vec<Source> = self
+            .client
+            .sink_inputs()
+            .expect("Gets sink inputs")
+            .into_iter()
+            .map(|f| f.into())
+            .collect();
 
         let source = new_sources
             .into_iter()

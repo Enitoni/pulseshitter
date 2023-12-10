@@ -18,6 +18,8 @@ mod analysis;
 mod parec;
 pub mod pulse;
 pub mod pulse_old;
+mod source;
+mod system;
 
 pub type AudioProducer = Arc<Mutex<HeapProducer<u8>>>;
 pub type AudioConsumer = Arc<Mutex<HeapConsumer<u8>>>;
@@ -31,7 +33,7 @@ pub type Sample = f32;
 pub const SAMPLE_RATE: usize = 48000;
 pub const SAMPLE_IN_BYTES: usize = 4;
 
-const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * 2048;
+pub const BUFFER_SIZE: usize = (SAMPLE_IN_BYTES * 2) * 2048;
 
 /// Keeps track of the selected application and provides a reader to discord
 pub struct AudioSystem {
