@@ -2,11 +2,10 @@ use std::{
     io::{Read, Seek},
     sync::Arc,
     thread,
-    time::Duration,
 };
 
 use parking_lot::Mutex;
-use ringbuf::{consumer, HeapConsumer, HeapProducer, HeapRb};
+use ringbuf::HeapRb;
 use songbird::input::{reader::MediaSource, Codec, Container, Input, Reader};
 
 use super::{
@@ -15,7 +14,7 @@ use super::{
         PulseClient, PulseClientError, PulseClientEvent, SinkInputStream, SinkInputStreamStatus,
     },
     source::{Source, SourceSelector},
-    AudioConsumer, AudioProducer, BUFFER_SIZE, LATENCY_IN_SECONDS, SAMPLE_IN_BYTES, SAMPLE_RATE,
+    AudioConsumer, AudioProducer, BUFFER_SIZE, SAMPLE_IN_BYTES,
 };
 
 pub type AudioStatus = SinkInputStreamStatus;
@@ -61,7 +60,6 @@ impl AudioSystem {
         });
 
         spawn_analysis_thread(audio.meter.clone());
-        spawn_audio_thread(audio.clone());
         spawn_event_thread(audio.clone());
         Ok(audio)
     }
@@ -119,32 +117,6 @@ impl AudioContext {
             .map(|x| x.status())
             .unwrap_or_default()
     }
-}
-
-fn spawn_audio_thread(audio: Arc<AudioSystem>) {
-    let run = move || {
-        let producer = audio.producer.clone();
-        let stream = audio.stream.clone();
-
-        loop {
-            let mut time_to_wait = LATENCY_IN_SECONDS;
-            let mut buf = [0; BUFFER_SIZE];
-
-            //if let Some(stream) = &mut *stream.lock() {
-            //    let bytes_read = stream.read(&mut buf).unwrap_or_default();
-            //
-            //    producer.lock().push_slice(&buf);
-            //}
-
-            //audio.meter.write(&buf);
-            thread::sleep(Duration::from_secs_f32(time_to_wait));
-        }
-    };
-
-    thread::Builder::new()
-        .name("audio".to_string())
-        .spawn(run)
-        .unwrap();
 }
 
 fn spawn_event_thread(audio: Arc<AudioSystem>) {

@@ -1,10 +1,10 @@
 use std::{
-    io::Read,
     sync::{mpsc, Arc},
     thread,
     time::Duration,
 };
 
+use crate::audio::SAMPLE_RATE;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use libpulse_binding::{
     callbacks::ListResult,
@@ -22,11 +22,8 @@ use libpulse_binding::{
     volume::Volume,
 };
 use parking_lot::{Mutex, RwLock};
-use ringbuf::HeapRb;
 
-use crate::audio::SAMPLE_RATE;
-
-use super::{AudioConsumer, AudioProducer, BUFFER_SIZE, SAMPLE_IN_BYTES};
+use super::BUFFER_SIZE;
 
 /// Abstracts connections and interfacing with pulseaudio
 pub struct PulseClient {
@@ -252,9 +249,6 @@ pub struct SinkInputStream {
     context: Arc<Mutex<Context>>,
     stream: Arc<Mutex<Stream>>,
 
-    producer: AudioProducer,
-    consumer: AudioConsumer,
-
     status: Arc<RwLock<SinkInputStreamStatus>>,
     event_sender: Sender<PulseClientEvent>,
 }
@@ -281,14 +275,10 @@ impl SinkInputStream {
             Arc::new(Mutex::new(stream))
         };
 
-        let (producer, consumer) = HeapRb::new(BUFFER_SIZE * 5).split();
-
         Self {
             context,
             stream,
             event_sender,
-            producer: Mutex::new(producer).into(),
-            consumer: Mutex::new(consumer).into(),
             status: Default::default(),
         }
     }
@@ -329,7 +319,6 @@ impl SinkInputStream {
         })));
 
         locked_stream.set_read_callback(Some(Box::new({
-            let producer = self.producer.clone();
             let stream = self.stream.clone();
             let sender = self.event_sender.clone();
 
@@ -420,18 +409,6 @@ impl Drop for SinkInputStream {
         }
 
         dbg!("dropped");
-    }
-}
-
-impl Read for SinkInputStream {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut consumer = self.consumer.lock();
-
-        if consumer.len() >= buf.len() * 2 {
-            return consumer.read(buf);
-        }
-
-        Ok(0)
     }
 }
 

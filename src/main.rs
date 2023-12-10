@@ -1,10 +1,9 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
 };
 
-use audio::{pulse::PulseClient, Source};
+use audio::Source;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::{Discord, DiscordContext};
 use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};

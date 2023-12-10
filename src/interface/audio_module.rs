@@ -1,9 +1,6 @@
-use std::fmt::Write as _;
-
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    text::{Span, Spans},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
@@ -187,29 +184,4 @@ impl Widget for &AudioModule {
             _ => self.render_idle(block_inner, buf),
         }
     }
-}
-
-fn format_seconds(seconds: f32) -> String {
-    let mut result = String::new();
-
-    let seconds = seconds.floor() as u32;
-    let minutes = seconds / 60;
-    let hours = minutes / 60;
-
-    let mut minute_padding = 0;
-
-    if hours >= 1 {
-        let _ = write!(&mut result, "{:0}:", hours);
-        minute_padding = 2;
-    }
-
-    let _ = write!(
-        &mut result,
-        "{:0mw$}:{:02}",
-        minutes % 60,
-        seconds % 60,
-        mw = minute_padding
-    );
-
-    result
 }
