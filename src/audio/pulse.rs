@@ -33,7 +33,7 @@ pub struct PulseClient {
 impl PulseClient {
     pub fn new() -> Result<Self, PulseClientError> {
         let spec = Spec {
-            format: Format::S16NE,
+            format: Format::F32le,
             channels: 2,
             rate: SAMPLE_RATE as u32,
         };
