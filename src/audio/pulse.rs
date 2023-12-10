@@ -409,8 +409,9 @@ impl Drop for SinkInputStream {
         stream.set_suspended_callback(None);
         stream.set_read_callback(None);
         stream.set_event_callback(None);
+        stream.set_state_callback(None);
 
-        if let StreamState::Ready | StreamState::Creating = stream.get_state() {
+        if let StreamState::Ready = stream.get_state() {
             stream.disconnect().unwrap_or_else(|e| {
                 eprintln!("Failed to disconnect stream: {}", e);
             })
