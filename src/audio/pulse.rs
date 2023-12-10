@@ -236,6 +236,7 @@ pub struct SinkInput {
 }
 
 /// Represents a stream of audio from a sink input
+#[derive(Clone)]
 pub struct SinkInputStream {
     context: Arc<Mutex<Context>>,
     stream: Arc<Mutex<Stream>>,
@@ -359,6 +360,10 @@ impl SinkInputStream {
             .expect("Connects stream for recording");
 
         Ok(())
+    }
+
+    pub fn status(&self) -> SinkInputStreamStatus {
+        self.status.read().clone()
     }
 }
 
