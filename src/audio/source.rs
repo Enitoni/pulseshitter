@@ -88,6 +88,7 @@ impl SourceSelector {
 
     pub fn handle_sink_input_event(&self, index: u32, operation: Operation) {
         let mut current_sources = self.stored_sources.lock();
+
         let new_sources: Vec<Source> = self
             .client
             .sink_inputs()
@@ -117,6 +118,8 @@ impl SourceSelector {
                 existing_source.expect("Existing source exists").remove();
             }
         }
+
+        current_sources.retain(|s| !s.is_dead());
     }
 }
 
