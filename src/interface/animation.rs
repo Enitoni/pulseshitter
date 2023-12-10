@@ -43,7 +43,6 @@ impl Animation {
 
         let current_frame = self.frame.load();
         let frame_progress = current_frame / Animation::TIME_FRAME as f32;
-        let speed = speed;
 
         let spans: Vec<_> = spans
             .into_iter()

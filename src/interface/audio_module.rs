@@ -1,13 +1,10 @@
-use std::fmt::Write as _;
-
 use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    text::{Span, Spans},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
-use crate::audio::{AudioContext, AudioError, AudioStatus};
+use crate::audio::{AudioContext, AudioStatus};
 
 use super::animation::{self, AnimatedSpan, Animation};
 
@@ -118,12 +115,7 @@ impl AudioModule {
         );
     }
 
-    fn render_error(
-        &self,
-        error: AudioError,
-        area: tui::layout::Rect,
-        buf: &mut tui::buffer::Buffer,
-    ) {
+    fn render_error(&self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(2), Constraint::Percentage(100)])
@@ -131,18 +123,9 @@ impl AudioModule {
 
         let error_status: AnimatedSpan = animation::Error.into();
 
-        let error_help = match error {
-            AudioError::TimedOut => {
-                "pulseshitter was unable to connect to your application.
+        let error_help = "pulseshitter was unable to connect to your application.
             
-            Make sure it is open and playing audio, then try again."
-            }
-            AudioError::ParecMissing => {
-                "pulseshitter was unable to spawn the parec process for recording.
-            
-            Is pulseaudio or pipewire installed? Is parec in path?"
-            }
-        };
+        Make sure it is open and playing audio, then try again.";
 
         let help_text = Paragraph::new(format!(
             "{}
@@ -156,7 +139,7 @@ impl AudioModule {
 
         let animations = vec![
             error_status.clone(),
-            (vec![format!("  {}", error)], error_status.1),
+            (vec![format!("  {}", "Timed out")], error_status.1),
         ];
 
         self.animation.render(1, animations, chunks[0], buf);
@@ -170,26 +153,7 @@ impl AudioModule {
             .split(area);
 
         let status_text = Paragraph::new("⏵ Streaming").style(Style::default().fg(Color::Green));
-
-        let info_lines = vec![
-            Spans::from(Span::styled("Device:", Style::default().fg(Color::Gray))),
-            Spans::from(Span::raw(self.audio.pulse.current_device().name())),
-            Spans::default(),
-            Spans::from(Span::styled(
-                "Latency:         Time elapsed:",
-                Style::default().fg(Color::Gray),
-            )),
-            Spans::from(Span::raw(format!(
-                "{:.3}ms          {}",
-                self.audio.latency.load() as f32 / 1000.,
-                format_seconds(self.audio.time.load()),
-            ))),
-        ];
-
-        let info_paragraph = Paragraph::new(info_lines).wrap(Wrap { trim: false });
-
         status_text.render(chunks[0], buf);
-        info_paragraph.render(chunks[1], buf);
     }
 }
 
@@ -211,40 +175,13 @@ impl Widget for &AudioModule {
         };
 
         block.render(area, buf);
+        let status = self.audio.status();
 
-        let status = self.audio.status.lock().unwrap();
-
-        match &*status {
-            AudioStatus::Idle => self.render_idle(block_inner, buf),
-            AudioStatus::Connecting(_) => self.render_connecting(block_inner, buf),
-            AudioStatus::Failed(err) => self.render_error(*err, block_inner, buf),
-            AudioStatus::Connected(_) => self.render_connected(block_inner, buf),
-            AudioStatus::Searching => self.render_searching(block_inner, buf),
+        match status {
+            AudioStatus::Connecting => self.render_connecting(block_inner, buf),
+            AudioStatus::Failed(_) => self.render_error(block_inner, buf),
+            AudioStatus::Connected => self.render_connected(block_inner, buf),
+            _ => self.render_idle(block_inner, buf),
         }
     }
-}
-
-fn format_seconds(seconds: f32) -> String {
-    let mut result = String::new();
-
-    let seconds = seconds.floor() as u32;
-    let minutes = seconds / 60;
-    let hours = minutes / 60;
-
-    let mut minute_padding = 0;
-
-    if hours >= 1 {
-        let _ = write!(&mut result, "{:0}:", hours);
-        minute_padding = 2;
-    }
-
-    let _ = write!(
-        &mut result,
-        "{:0mw$}:{:02}",
-        minutes % 60,
-        seconds % 60,
-        mw = minute_padding
-    );
-
-    result
 }

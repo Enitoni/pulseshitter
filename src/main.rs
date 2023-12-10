@@ -3,13 +3,12 @@ use std::{
     thread,
 };
 
-use audio::spawn_audio_thread;
-use audio::{pulse::Source, AudioContext};
+use audio::Source;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord::{Discord, DiscordContext};
 use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
 
-use crate::audio::AudioSystem;
+use crate::audio::{AudioContext, AudioSystem};
 use state::Config;
 
 mod audio;
@@ -45,12 +44,10 @@ impl AppContext {
 impl App {
     fn new() -> Self {
         let discord = Discord::default();
-        let audio = Arc::new(AudioSystem::new());
+        let audio = AudioSystem::new().unwrap_or_else(|_| todo!());
 
         let config = Config::restore();
         let (action_sender, action_receiver) = unbounded();
-
-        spawn_audio_thread(audio.clone());
 
         let context = AppContext {
             actions: action_sender.clone(),
@@ -113,8 +110,8 @@ impl App {
                 let dashboard_view = DashboardView::new(self.context());
                 *view = View::Dashboard(dashboard_view);
             }
-            Action::StopStream => self.audio.clear(),
-            Action::SetAudioSource(app) => self.audio.set_source(app),
+            Action::StopStream => self.audio.select(None),
+            Action::SetAudioSource(app) => self.audio.select(Some(app)),
             Action::Exit => self.discord.disconnect(),
         };
     }

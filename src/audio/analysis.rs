@@ -6,7 +6,7 @@ use parking_lot::Mutex;
 
 use crate::interface::TARGET_FPS;
 
-use super::{AudioSystem, Sample, SAMPLE_IN_BYTES, SAMPLE_RATE};
+use super::{Sample, SAMPLE_IN_BYTES, SAMPLE_RATE};
 
 /// Measures dBFS of a single channel
 pub struct Meter {
@@ -171,12 +171,12 @@ pub fn raw_samples_from_bytes(bytes: &[u8]) -> Vec<Sample> {
         .collect()
 }
 
-pub fn spawn_analysis_thread(audio: Arc<AudioSystem>) {
+pub fn spawn_analysis_thread(meter: Arc<StereoMeter>) {
     let run = move || {
         let tick_rate = 1. / TARGET_FPS as f32;
 
         loop {
-            let meter = audio.meter.clone();
+            let meter = meter.clone();
             meter.process();
 
             thread::sleep(Duration::from_secs_f32(tick_rate));
