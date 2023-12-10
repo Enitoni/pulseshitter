@@ -153,8 +153,6 @@ impl PulseClient {
             |success| {
                 if !success {
                     eprintln!("Failed to subscribe to sink and source events");
-                } else {
-                    println!("subscribed");
                 }
             },
         );
@@ -313,8 +311,6 @@ impl SinkInputStream {
                         }
                     }
                 }
-
-                dbg!(&status);
             }
         })));
 

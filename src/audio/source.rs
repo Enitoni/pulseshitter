@@ -225,8 +225,6 @@ impl Source {
 
 impl SourceComparison {
     fn is_similar_enough(&self) -> bool {
-        dbg!(&self);
-
         match self {
             SourceComparison::Partial(score) => *score > 0.3,
             SourceComparison::Exact => true,
