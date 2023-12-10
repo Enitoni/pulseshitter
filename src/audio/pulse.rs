@@ -380,6 +380,8 @@ impl SinkInputStream {
             .set_monitor_stream(sink_input.index)
             .expect("Sets monitor stream");
 
+        *self.status.write() = SinkInputStreamStatus::Connecting;
+
         stream
             .connect_record(
                 Some(sink_input.sink.to_string().as_str()),
@@ -416,6 +418,8 @@ impl Drop for SinkInputStream {
                 eprintln!("Failed to disconnect stream: {}", e);
             })
         }
+
+        dbg!("dropped");
     }
 }
 
