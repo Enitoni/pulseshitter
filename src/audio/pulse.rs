@@ -403,8 +403,6 @@ impl Drop for SinkInputStream {
                 eprintln!("Failed to disconnect stream: {}", e);
             })
         }
-
-        dbg!("dropped");
     }
 }
 
