@@ -5,16 +5,19 @@ use std::{
 
 use audio::Source;
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use dickcord::{Discord, DiscordContext};
+use dickcord_old::{Discord, DiscordContext};
 use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
 
 use crate::audio::{AudioContext, AudioSystem};
 use state::Config;
 
 mod audio;
-mod dickcord;
+mod dickcord_old;
 mod interface;
 mod state;
+
+mod app;
+mod new_main;
 
 pub struct App {
     config: Arc<Mutex<Option<Config>>>,

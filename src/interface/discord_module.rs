@@ -4,7 +4,7 @@ use tui::{
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
-use crate::dickcord::{DiscordContext, DiscordStatus};
+use crate::dickcord_old::{DiscordContext, DiscordStatus};
 
 pub struct DiscordModule {
     discord: DiscordContext,

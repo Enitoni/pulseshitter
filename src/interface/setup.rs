@@ -13,7 +13,7 @@ use tui::{
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
-use crate::{dickcord::DiscordStatus, state::Config, Action};
+use crate::{dickcord_old::DiscordStatus, state::Config, Action};
 
 use super::{field::Field, ViewController};
 

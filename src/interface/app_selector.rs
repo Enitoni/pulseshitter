@@ -7,7 +7,7 @@ use tui::{
 };
 
 use crate::AppContext;
-use crate::{dickcord::DiscordStatus, Action};
+use crate::{dickcord_old::DiscordStatus, Action};
 
 use super::ViewController;
 
