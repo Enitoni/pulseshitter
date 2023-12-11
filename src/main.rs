@@ -16,7 +16,8 @@ mod dickcord_old;
 mod interface;
 mod state;
 
-mod app;
+pub mod app;
+mod dickcord;
 mod new_main;
 
 pub struct App {

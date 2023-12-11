@@ -1,4 +1,8 @@
-use crate::{app::AppContext, audio::Source, state::Config};
+use crate::{
+    app::AppContext,
+    audio::{AudioStream, Source},
+    state::Config,
+};
 
 use super::{Bot, BotEvent};
 use parking_lot::Mutex;
@@ -13,7 +17,7 @@ pub struct DiscordSystem {
     bot: Mutex<Option<Arc<Bot>>>,
     state: Mutex<State>,
 
-    context: AppContext,
+    stream: AudioStream,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -36,10 +40,10 @@ pub enum VoiceState {
 }
 
 impl DiscordSystem {
-    pub fn new(rt: Arc<Runtime>, context: AppContext) -> Arc<Self> {
+    pub fn new(rt: Arc<Runtime>, stream: AudioStream) -> Arc<Self> {
         let system = Arc::new(Self {
             rt,
-            context,
+            stream,
             bot: Default::default(),
             state: Default::default(),
         });
@@ -48,7 +52,7 @@ impl DiscordSystem {
         system
     }
 
-    pub fn connect(&self, config: Config) {
+    pub fn connect(&self, config: &Config) {
         *self.bot.lock() = Some(Bot::new(self.rt.clone(), config).into());
         self.set_state(State::Connecting);
     }
@@ -63,7 +67,7 @@ impl DiscordSystem {
 
     fn stream_on_demand(&self) {
         let bot = self.bot_unwrapped();
-        let audio = self.context.stream();
+        let audio = self.stream.clone();
 
         self.rt
             .spawn(async move { bot.attempt_join_and_stream(audio).await });

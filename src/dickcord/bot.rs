@@ -62,7 +62,7 @@ pub enum BotEvent {
 }
 
 impl Bot {
-    pub fn new(rt: Arc<Runtime>, config: Config) -> Self {
+    pub fn new(rt: Arc<Runtime>, config: &Config) -> Self {
         let (event_sender, event_receiver) = unbounded();
 
         let target_user = config.user_id;
