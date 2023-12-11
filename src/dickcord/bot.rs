@@ -74,7 +74,7 @@ impl Bot {
                 .register_songbird()
                 .event_handler(event_handler)
                 .await
-                .expect("Err creating client")
+                .expect("client is created")
         });
 
         let shard_manager = client.shard_manager.clone();
