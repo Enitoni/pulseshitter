@@ -8,7 +8,7 @@ use serenity::{
     model::{
         channel::{ChannelType, GuildChannel},
         event::ResumedEvent,
-        gateway::{GatewayIntents, Ready},
+        gateway::{Activity, GatewayIntents, Ready},
         guild::Member,
         user::CurrentUser,
         voice::VoiceState,
@@ -91,14 +91,39 @@ impl Bot {
         }
     }
 
+    pub async fn set_streaming_status(&self, name: Option<String>) {
+        let context = self.context().await;
+
+        if let Some(name) = name {
+            context
+                .set_activity(Activity::streaming(
+                    name,
+                    "https://github.com/Enitoni/pulseshitter",
+                ))
+                .await;
+        } else {
+            context.reset_presence().await
+        }
+    }
+
+    pub async fn attempt_join_and_stream(&self, audio: AudioStream) {
+        let channel = self.locate_target_user_channel().await;
+
+        let call = match channel {
+            Some(c) => self.connect_to_channel(&c).await,
+            None => None,
+        };
+
+        if let Some(call) = call {
+            self.stream_call_audio(call, audio).await;
+        }
+    }
+
     pub fn poll(&self) -> BotEvent {
         self.event_receiver.recv().unwrap()
     }
 
-    pub async fn connect_to_channel(
-        &self,
-        channel: &GuildChannel,
-    ) -> Result<Arc<Mutex<Call>>, JoinError> {
+    pub async fn connect_to_channel(&self, channel: &GuildChannel) -> Option<Arc<Mutex<Call>>> {
         let context = self.context().await;
         let manager = songbird::get(&context)
             .await
@@ -107,7 +132,13 @@ impl Bot {
         let (handler, result) = manager.join(channel.guild_id, channel.id).await;
 
         match result {
-            Err(x) => Err(x),
+            Err(x) => {
+                self.event_sender
+                    .send(BotEvent::VoiceError(x.to_string()))
+                    .unwrap();
+
+                None
+            }
             Ok(_) => {
                 let _ = self
                     .connected_to_channel
@@ -115,7 +146,7 @@ impl Bot {
                     .await
                     .insert(channel.clone());
 
-                Ok(handler)
+                Some(handler)
             }
         }
     }
@@ -136,10 +167,7 @@ impl Bot {
     }
 
     /// Finds the channel the target user is in, if any
-    pub async fn locate_target_user_channel(
-        &self,
-        target_user: TargetUser,
-    ) -> Option<GuildChannel> {
+    pub async fn locate_target_user_channel(&self) -> Option<GuildChannel> {
         let context = self.context().await;
         let members_in_channels = self.all_members_in_channels(&context).await;
 
@@ -148,7 +176,7 @@ impl Bot {
             .find_map(|(members, guild_channel)| {
                 members
                     .into_iter()
-                    .find(|m| m.user.id == target_user)
+                    .find(|m| m.user.id == self.target_user)
                     .map(|_| guild_channel)
             })
     }

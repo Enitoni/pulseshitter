@@ -1,4 +1,4 @@
-use crate::state::Config;
+use crate::{app::AppContext, audio::Source, state::Config};
 
 use super::{Bot, BotEvent};
 use parking_lot::Mutex;
@@ -10,8 +10,10 @@ use tokio::runtime::Runtime;
 pub struct DiscordSystem {
     rt: Arc<Runtime>,
 
-    bot: Mutex<Option<Bot>>,
+    bot: Mutex<Option<Arc<Bot>>>,
     state: Mutex<State>,
+
+    context: AppContext,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -34,9 +36,10 @@ pub enum VoiceState {
 }
 
 impl DiscordSystem {
-    pub fn new(rt: Arc<Runtime>) -> Arc<Self> {
+    pub fn new(rt: Arc<Runtime>, context: AppContext) -> Arc<Self> {
         let system = Arc::new(Self {
             rt,
+            context,
             bot: Default::default(),
             state: Default::default(),
         });
@@ -46,8 +49,24 @@ impl DiscordSystem {
     }
 
     pub fn connect(&self, config: Config) {
-        *self.bot.lock() = Some(Bot::new(self.rt.clone(), config));
+        *self.bot.lock() = Some(Bot::new(self.rt.clone(), config).into());
         self.set_state(State::Connecting);
+    }
+
+    pub fn announce_source_streaming(&self, source: Option<Source>) {
+        let bot = self.bot_unwrapped();
+        let name = source.map(|s| s.name());
+
+        self.rt
+            .spawn(async move { bot.set_streaming_status(name).await });
+    }
+
+    fn stream_on_demand(&self) {
+        let bot = self.bot_unwrapped();
+        let audio = self.context.stream();
+
+        self.rt
+            .spawn(async move { bot.attempt_join_and_stream(audio).await });
     }
 
     fn set_state(&self, new_state: State) {
@@ -72,7 +91,8 @@ impl DiscordSystem {
     }
 
     fn handle_connected(&self, user: CurrentUser) {
-        self.set_state(State::Connected(user, VoiceState::Idle))
+        self.set_state(State::Connected(user, VoiceState::Idle));
+        self.stream_on_demand();
     }
 
     fn handle_client_error(&self, error: String) {
@@ -95,7 +115,21 @@ impl DiscordSystem {
         self.set_voice_state(VoiceState::Error(error))
     }
 
-    fn handle_target_user_moved(&self, new_channel: Option<GuildChannel>) {}
+    fn handle_target_user_moved(&self, new_channel: Option<GuildChannel>) {
+        let new_voice_state = new_channel
+            .map(|c| VoiceState::Active(c))
+            .unwrap_or_default();
+
+        self.set_voice_state(new_voice_state);
+        self.stream_on_demand();
+    }
+
+    fn bot_unwrapped(&self) -> Arc<Bot> {
+        self.bot
+            .lock()
+            .clone()
+            .expect("bot_unwrapped() is not called when there is not a bot")
+    }
 }
 
 impl State {
@@ -106,6 +140,10 @@ impl State {
                 eprintln!("set_voice_state() was called when not connected.")
             }
         }
+    }
+
+    fn is_connected(&self) -> bool {
+        matches!(self, Self::Connected(_, _))
     }
 }
 
