@@ -44,23 +44,28 @@ pub struct BotHandler {
 #[derive(Clone)]
 pub enum BotEvent {
     /// Bot has connected to Discord
-    Connected(SerenityContext, CurrentUser),
+    Connected(CurrentUser),
     /// Disconnected from Discord, either by an error or intentionally
     Reconnected,
-    /// Joined a voice channel
+    /// Joining a voice channel
+    Joining(GuildChannel),
+    /// Successfully joined a voice channel
     Joined(GuildChannel),
     /// Disconnected from voice channel
     Left,
     /// The user the bot is following connected or disconnected from a channel
     TargetUserMoved(Option<GuildChannel>),
     /// Something bad happened, duh.
-    Error(String),
+    ClientError(String),
+    /// An error occurred with the voice connection
+    VoiceError(String),
 }
 
 impl Bot {
-    pub fn new(rt: Arc<Runtime>, config: Config, target_user: TargetUser) -> Self {
+    pub fn new(rt: Arc<Runtime>, config: Config) -> Self {
         let (event_sender, event_receiver) = unbounded();
 
+        let target_user = config.user_id;
         let context = Arc::new(Mutex::new(None));
         let event_handler = BotHandler::new(context.clone(), event_sender.clone());
 
@@ -84,6 +89,10 @@ impl Bot {
             event_receiver,
             connected_to_channel: Default::default(),
         }
+    }
+
+    pub fn poll(&self) -> BotEvent {
+        self.event_receiver.recv().unwrap()
     }
 
     pub async fn connect_to_channel(
@@ -201,7 +210,7 @@ impl EventHandler for BotHandler {
         *self.context.lock().await = Some(context.clone());
 
         self.event_sender
-            .send(BotEvent::Connected(context, ready.user.clone()))
+            .send(BotEvent::Connected(ready.user.clone()))
             .unwrap();
     }
 
