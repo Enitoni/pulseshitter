@@ -9,6 +9,9 @@ pub use view::*;
 mod splash;
 pub use splash::*;
 
+mod dashboard;
+pub use dashboard::*;
+
 use crossbeam::channel::{unbounded, Receiver};
 use crossterm::{
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
@@ -20,6 +23,11 @@ use tui::{backend::CrosstermBackend, Terminal};
 
 pub const TARGET_FPS: u32 = 144;
 pub const MS_PER_FRAME: f32 = 1000. / TARGET_FPS as f32;
+
+pub const LOGO: &str = "
+█▀█ █░█ █░░ █▀ █▀▀ █▀ █░█ █ ▀█▀ ▀█▀ █▀▀ █▀█
+█▀▀ █▄█ █▄▄ ▄█ ██▄ ▄█ █▀█ █ ░█░ ░█░ ██▄ █▀▄
+";
 
 /// Handles rendering logic
 pub struct Interface {

@@ -3,7 +3,7 @@ use tui::{
     widgets::{Paragraph, Widget},
 };
 
-use super::View;
+use super::{View, LOGO};
 pub struct Splash;
 
 impl View for Splash {
@@ -12,8 +12,3 @@ impl View for Splash {
         logo.render(area, buf);
     }
 }
-
-const LOGO: &str = "
-█▀█ █░█ █░░ █▀ █▀▀ █▀ █░█ █ ▀█▀ ▀█▀ █▀▀ █▀█
-█▀▀ █▄█ █▄▄ ▄█ ██▄ ▄█ █▀█ █ ░█░ ░█░ ██▄ █▀▄
-";

@@ -1,7 +1,7 @@
 use crate::{
     audio::{pulse::PulseClientError, AudioSystem},
     dickcord::DiscordSystem,
-    interface::{Interface, Splash},
+    interface::{Dashboard, Interface, Splash},
     state::Config,
 };
 use std::sync::Arc;
@@ -69,6 +69,7 @@ impl App {
 
         if let Some(config) = config {
             self.discord.connect(&config);
+            self.interface.set_view(Dashboard::new(self.context()))
         }
     }
 
