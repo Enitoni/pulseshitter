@@ -12,7 +12,10 @@ pub use splash::*;
 mod dashboard;
 pub use dashboard::*;
 
-use crossbeam::channel::{unbounded, Receiver};
+use crossbeam::{
+    atomic::AtomicCell,
+    channel::{unbounded, Receiver, Sender},
+};
 use crossterm::{
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -20,6 +23,8 @@ use crossterm::{
 };
 use parking_lot::Mutex;
 use tui::{backend::CrosstermBackend, Terminal};
+
+use crate::app::{AppAction, AppEvent};
 
 pub const TARGET_FPS: u32 = 144;
 pub const MS_PER_FRAME: f32 = 1000. / TARGET_FPS as f32;
@@ -32,15 +37,19 @@ pub const LOGO: &str = "
 /// Handles rendering logic
 pub struct Interface {
     view: Mutex<BoxedView>,
+    exiting: AtomicCell<bool>,
+    sender: Sender<AppEvent>,
 }
 
 impl Interface {
-    pub fn new<V>(view: V) -> Self
+    pub fn new<V>(view: V, sender: Sender<AppEvent>) -> Self
     where
         V: View + Sync + Send + 'static,
     {
         Self {
             view: Mutex::new(BoxedView::new(view)),
+            exiting: false.into(),
+            sender,
         }
     }
 
@@ -74,10 +83,15 @@ impl Interface {
                 break;
             };
 
+            if self.exiting.load() {
+                break 'ui;
+            }
+
             while let Ok(event) = events.try_recv() {
                 if let Event::Key(key) = &event {
                     if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
-                        break 'ui;
+                        self.sender.send(AppEvent::Action(AppAction::Exit)).unwrap();
+                        continue;
                     }
                 }
 
@@ -102,6 +116,10 @@ impl Interface {
         terminal.show_cursor()?;
 
         Ok(())
+    }
+
+    pub fn stop(&self) {
+        self.exiting.store(true)
     }
 }
 

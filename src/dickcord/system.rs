@@ -56,8 +56,20 @@ impl DiscordSystem {
     }
 
     pub fn connect(&self, config: &Config) {
-        *self.bot.lock() = Some(Bot::new(self.rt.clone(), config).into());
+        let bot = Bot::new(self.rt.clone(), config).into();
+
+        *self.bot.lock() = Some(bot);
         self.set_state(State::Connecting);
+    }
+
+    pub fn disconnect(&self) {
+        let bot = self.bot.lock().take();
+
+        if let Some(bot) = bot {
+            self.rt.block_on(async move { bot.stop().await });
+        }
+
+        self.set_state(State::Idle);
     }
 
     pub fn announce_source_streaming(&self, source: Option<Source>) {
@@ -66,6 +78,10 @@ impl DiscordSystem {
 
         self.rt
             .spawn(async move { bot.set_streaming_status(name).await });
+    }
+
+    pub fn state(&self) -> State {
+        self.state.lock().clone()
     }
 
     fn stream_on_demand(&self) {
@@ -158,7 +174,8 @@ impl State {
 
 fn spawn_discord_event_thread(discord: Arc<DiscordSystem>) {
     let run = move || loop {
-        let event = discord.bot.lock().as_ref().map(|b| b.poll());
+        let bot = discord.bot.lock().clone();
+        let event = bot.map(|b| b.poll());
 
         if let Some(event) = event {
             discord.handle_event(event)

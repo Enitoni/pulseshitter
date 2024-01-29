@@ -4,7 +4,10 @@ use crate::{
     interface::{Dashboard, Interface, Splash},
     state::Config,
 };
-use crossbeam::channel::{unbounded, Receiver, Sender};
+use crossbeam::{
+    atomic::AtomicCell,
+    channel::{unbounded, Receiver, Sender},
+};
 use std::{sync::Arc, thread};
 use thiserror::Error;
 use tokio::runtime::{Builder, Runtime};
@@ -17,6 +20,7 @@ pub struct App {
     discord: Arc<DiscordSystem>,
 
     events: Sender<AppEvent>,
+    state: AtomicCell<AppState>,
 }
 
 #[derive(Clone)]
@@ -24,6 +28,12 @@ pub struct AppContext {
     events: Sender<AppEvent>,
     audio: Arc<AudioSystem>,
     discord: Arc<DiscordSystem>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum AppState {
+    Idle,
+    Exiting,
 }
 
 #[derive(Error, Debug)]
@@ -62,7 +72,7 @@ impl App {
 
         let audio = AudioSystem::new().map_err(AppError::PulseClient)?;
         let discord = DiscordSystem::new(rt.clone(), sender.clone(), audio.stream());
-        let interface = Interface::new(Splash);
+        let interface = Interface::new(Splash, sender.clone());
 
         let app = Arc::new(Self {
             rt,
@@ -70,6 +80,7 @@ impl App {
             discord,
             interface,
             events: sender,
+            state: AppState::Idle.into(),
         });
 
         spawn_poll_thread(app.clone(), receiver);
@@ -103,6 +114,16 @@ impl App {
         }
     }
 
+    fn exit(&self) {
+        self.state.store(AppState::Exiting);
+
+        if let dickcord::State::Connected(_, _) = self.discord.state() {
+            self.discord.disconnect();
+        } else {
+            self.interface.stop();
+        }
+    }
+
     fn handle_event(&self, event: AppEvent) {
         match event {
             AppEvent::Action(action) => self.handle_action(action),
@@ -113,6 +134,12 @@ impl App {
     fn handle_discord_state_update(&self, new_state: dickcord::State) {
         if let dickcord::State::Connected(_, _) = new_state {
             self.interface.set_view(Dashboard::new(self.context()))
+        }
+
+        if let dickcord::State::Idle = new_state {
+            if self.state.load() == AppState::Exiting {
+                self.interface.stop();
+            }
         }
     }
 
@@ -129,7 +156,7 @@ impl App {
                 self.audio.select(None);
                 self.discord.announce_source_streaming(None);
             }
-            _ => {}
+            AppAction::Exit => self.exit(),
         }
     }
 }

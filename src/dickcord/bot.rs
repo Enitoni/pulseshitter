@@ -231,11 +231,11 @@ impl Bot {
             .expect("context() is not called before initialization")
     }
 
-    async fn stop(&self) {
+    pub async fn stop(&self) {
         let mut manager = self.shard_manager.lock().await;
-        let context = self.context.lock().await;
+        let context = self.context.lock().await.clone();
 
-        if let Some(context) = &*context {
+        if let Some(context) = context {
             let _ = self.disconnect_from_channel().await;
             context.invisible().await
         }
