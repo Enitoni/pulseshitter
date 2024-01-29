@@ -1,6 +1,7 @@
 use crate::{
-    audio::{pulse::PulseClientError, AudioStream, AudioSystem},
+    audio::{pulse::PulseClientError, AudioSystem},
     dickcord::DiscordSystem,
+    interface::{Interface, Splash},
     state::Config,
 };
 use std::sync::Arc;
@@ -10,10 +11,12 @@ use tokio::runtime::{Builder, Runtime};
 pub struct App {
     rt: Arc<Runtime>,
 
+    interface: Interface,
     audio: Arc<AudioSystem>,
     discord: Arc<DiscordSystem>,
 }
 
+#[derive(Clone)]
 pub struct AppContext {
     audio: Arc<AudioSystem>,
     discord: Arc<DiscordSystem>,
@@ -41,10 +44,30 @@ impl App {
         let audio = AudioSystem::new().map_err(AppError::PulseClient)?;
         let discord = DiscordSystem::new(rt.clone(), audio.stream());
 
-        let app = Self { rt, audio, discord };
+        let context = AppContext {
+            audio: audio.clone(),
+            discord: discord.clone(),
+        };
+
+        let interface = Interface::new(context, Splash);
+
+        let app = Self {
+            rt,
+            audio,
+            discord,
+            interface,
+        };
         app.restore();
 
         Ok(app)
+    }
+
+    pub fn run_tui(&self) {
+        let result = self.interface.run();
+
+        if let Err(err) = result {
+            eprintln!("Render error: {}", err)
+        }
     }
 
     fn restore(&self) {
