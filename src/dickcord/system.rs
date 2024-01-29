@@ -143,10 +143,16 @@ impl DiscordSystem {
     }
 
     fn handle_target_user_moved(&self, new_channel: Option<GuildChannel>) {
-        let new_voice_state = new_channel.map(VoiceState::Active).unwrap_or_default();
-
-        self.set_voice_state(new_voice_state);
-        self.stream_on_demand();
+        if let Some(new_channel) = new_channel {
+            self.set_voice_state(VoiceState::Active(new_channel));
+            self.stream_on_demand();
+        } else {
+            self.set_voice_state(VoiceState::Idle);
+            let bot = self.bot_unwrapped();
+            self.rt.spawn(async move {
+                bot.disconnect_from_channel().await.ok();
+            });
+        }
     }
 
     fn bot_unwrapped(&self) -> Arc<Bot> {
