@@ -174,4 +174,8 @@ fn spawn_poll_thread(app: Arc<App>, receiver: Receiver<AppEvent>) {
         .unwrap();
 }
 
-impl AppContext {}
+impl AppContext {
+    pub fn dispatch_action(&self, action: AppAction) {
+        self.events.send(AppEvent::Action(action)).unwrap()
+    }
+}
