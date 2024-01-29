@@ -122,9 +122,11 @@ impl SourceSelector {
                 }
             }
             Operation::Changed => {
-                existing_source
-                    .expect("Existing source exists")
-                    .update(source.expect("Changed source exists by index"));
+                if let Some(source) = source {
+                    existing_source
+                        .expect("Existing source exists")
+                        .update(source);
+                }
             }
             Operation::Removed => {
                 existing_source.expect("Existing source exists").remove();
