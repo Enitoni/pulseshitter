@@ -120,9 +120,7 @@ impl DiscordSystem {
     }
 
     fn handle_target_user_moved(&self, new_channel: Option<GuildChannel>) {
-        let new_voice_state = new_channel
-            .map(|c| VoiceState::Active(c))
-            .unwrap_or_default();
+        let new_voice_state = new_channel.map(VoiceState::Active).unwrap_or_default();
 
         self.set_voice_state(new_voice_state);
         self.stream_on_demand();
