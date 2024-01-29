@@ -1,10 +1,10 @@
 use crossterm::event::Event;
-use tui::widgets::Widget;
+use tui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
 pub trait View {
     fn handle_event(&mut self, _event: Event) {}
 
-    fn render(&self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer);
+    fn render(&self, area: Rect, buf: &mut Buffer);
 }
 
 pub struct BoxedView {
