@@ -1,9 +1,10 @@
 use crate::{
-    audio::{AudioStream, AudioSystem},
+    audio::{pulse::PulseClientError, AudioStream, AudioSystem},
     dickcord::DiscordSystem,
     state::Config,
 };
 use std::sync::Arc;
+use thiserror::Error;
 use tokio::runtime::{Builder, Runtime};
 
 pub struct App {
@@ -18,10 +19,16 @@ pub struct AppContext {
     discord: Arc<DiscordSystem>,
 }
 
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error(transparent)]
+    PulseClient(#[from] PulseClientError),
+    #[error("Unknown error")]
+    Unknown,
+}
+
 impl App {
-    // TODO: Fix this error being unit
-    #[allow(clippy::result_unit_err)]
-    pub fn new() -> Result<Self, ()> {
+    pub fn new() -> Result<Self, AppError> {
         let rt: Arc<_> = Builder::new_multi_thread()
             .worker_threads(1)
             .max_blocking_threads(1)
@@ -31,7 +38,7 @@ impl App {
             .unwrap()
             .into();
 
-        let audio = AudioSystem::new().map_err(|_| ())?;
+        let audio = AudioSystem::new().map_err(AppError::PulseClient)?;
         let discord = DiscordSystem::new(rt.clone(), audio.stream());
 
         let app = Self { rt, audio, discord };
