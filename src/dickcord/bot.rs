@@ -141,6 +141,10 @@ impl Bot {
             .await
             .expect("get songbird instance");
 
+        self.event_sender
+            .send(BotEvent::Joining(channel.clone()))
+            .unwrap();
+
         let (handler, result) = manager.join(channel.guild_id, channel.id).await;
 
         match result {
@@ -158,6 +162,10 @@ impl Bot {
                     .await
                     .insert(channel.clone());
 
+                self.event_sender
+                    .send(BotEvent::Joined(channel.clone()))
+                    .unwrap();
+
                 Some(handler)
             }
         }
@@ -170,6 +178,8 @@ impl Bot {
         if let Some(channel) = self.connected_to_channel.lock().await.take() {
             return manager.remove(channel.guild_id).await;
         }
+
+        self.event_sender.send(BotEvent::Left).unwrap();
 
         Ok(())
     }
