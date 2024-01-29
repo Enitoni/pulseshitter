@@ -178,4 +178,24 @@ impl AppContext {
     pub fn dispatch_action(&self, action: AppAction) {
         self.events.send(AppEvent::Action(action)).unwrap()
     }
+
+    pub fn sources(&self) -> Vec<Source> {
+        self.audio.sources()
+    }
+
+    pub fn current_source(&self) -> Option<Source> {
+        self.audio.current_source()
+    }
+
+    pub fn selected_source(&self) -> Option<Source> {
+        self.audio.selected_source()
+    }
+
+    pub fn meter_value_ranged(&self) -> (f32, f32) {
+        self.audio.meter_value_ranged()
+    }
+
+    pub fn discord_state(&self) -> dickcord::State {
+        self.discord.state()
+    }
 }

@@ -32,15 +32,6 @@ pub struct AudioSystem {
     meter: Arc<StereoMeter>,
 }
 
-#[derive(Clone)]
-pub struct AudioContext {
-    pub meter: Arc<StereoMeter>,
-    selector: Arc<SourceSelector>,
-
-    // TODO: This is temporary
-    stream: Arc<Mutex<Option<SinkInputStream>>>,
-}
-
 impl AudioSystem {
     pub fn new() -> Result<Arc<Self>, PulseClientError> {
         let client = Arc::new(PulseClient::new()?);
@@ -73,12 +64,28 @@ impl AudioSystem {
         AudioStream(self.consumer.clone())
     }
 
-    pub fn context(&self) -> AudioContext {
-        AudioContext {
-            meter: self.meter.clone(),
-            stream: self.stream.clone(),
-            selector: self.selector.clone(),
-        }
+    pub fn status(&self) -> SinkInputStreamStatus {
+        self.stream
+            .lock()
+            .as_ref()
+            .map(|x| x.status())
+            .unwrap_or_default()
+    }
+
+    pub fn sources(&self) -> Vec<Source> {
+        self.selector.sources()
+    }
+
+    pub fn current_source(&self) -> Option<Source> {
+        self.selector.current_source()
+    }
+
+    pub fn selected_source(&self) -> Option<Source> {
+        self.selector.selected_source()
+    }
+
+    pub fn meter_value_ranged(&self) -> (f32, f32) {
+        self.meter.value_ranged()
     }
 
     fn refresh_stream(&self) {
@@ -94,28 +101,6 @@ impl AudioSystem {
         } else {
             *self.stream.lock() = None;
         }
-    }
-}
-
-impl AudioContext {
-    pub fn sources(&self) -> Vec<Source> {
-        self.selector.sources()
-    }
-
-    pub fn current_source(&self) -> Option<Source> {
-        self.selector.current_source()
-    }
-
-    pub fn selected_source(&self) -> Option<Source> {
-        self.selector.selected_source()
-    }
-
-    pub fn status(&self) -> SinkInputStreamStatus {
-        self.stream
-            .lock()
-            .as_ref()
-            .map(|x| x.status())
-            .unwrap_or_default()
     }
 }
 

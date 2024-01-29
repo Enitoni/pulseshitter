@@ -5,17 +5,38 @@ use tui::{
     widgets::{Paragraph, Widget, Wrap},
 };
 
+mod source_selector;
+use source_selector::*;
+
+mod meter;
+use meter::*;
+
+mod discord_module;
+use discord_module::*;
+
 use crate::app::AppContext;
 
 use super::{View, LOGO};
 
 pub struct Dashboard {
-    context: AppContext,
+    content: Content,
+}
+
+pub struct Content {
+    selector: SourceSelector,
+    discord_module: DiscordModule,
+    meter: Meter,
 }
 
 impl Dashboard {
     pub fn new(context: AppContext) -> Self {
-        Self { context }
+        Self {
+            content: Content {
+                selector: SourceSelector::new(context.clone()),
+                discord_module: DiscordModule::new(context.clone()),
+                meter: Meter::new(context),
+            },
+        }
     }
 }
 
@@ -65,7 +86,65 @@ impl View for Dashboard {
             .split(chunks[2]);
 
         logo.render(chunks[0], buf);
+
+        self.content.render(chunks[1], buf);
+
         copyright.render(footer_chunks[0], buf);
         version.render(footer_chunks[1], buf);
+    }
+
+    fn handle_event(&mut self, event: crossterm::event::Event) {
+        self.content.handle_event(event)
+    }
+}
+
+impl View for Content {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(area.height.saturating_sub(5)),
+                Constraint::Length(4),
+            ])
+            .split(area);
+
+        let main_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(area.width.saturating_sub(38)),
+                Constraint::Length(38),
+            ])
+            .split(chunks[0]);
+
+        let sidebar_area = main_chunks[1];
+        let sidebar_area = tui::layout::Rect::new(
+            sidebar_area.x + 1,
+            sidebar_area.y,
+            sidebar_area.width.saturating_sub(1),
+            sidebar_area.height,
+        );
+
+        let sidebar_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(6),
+                Constraint::Length(sidebar_area.height.saturating_sub(7)),
+            ])
+            .split(sidebar_area);
+
+        self.selector.render(main_chunks[0], buf);
+        //self.audio_module.render(sidebar_chunks[1], buf);
+        self.discord_module.render(sidebar_chunks[0], buf);
+
+        let mut meter_area = chunks[1];
+        meter_area.x += 1;
+        meter_area.y += 1;
+        meter_area.width -= 1;
+
+        self.meter.render(meter_area, buf);
+    }
+
+    fn handle_event(&mut self, event: crossterm::event::Event) {
+        self.selector.handle_event(event)
     }
 }
