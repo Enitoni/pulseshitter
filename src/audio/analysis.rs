@@ -4,7 +4,7 @@ use crossbeam::atomic::AtomicCell;
 use multiversion::multiversion;
 use parking_lot::Mutex;
 
-use crate::interface::TARGET_FPS;
+use crate::interface_old::TARGET_FPS;
 
 use super::{Sample, SAMPLE_IN_BYTES, SAMPLE_RATE};
 

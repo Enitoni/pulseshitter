@@ -6,14 +6,14 @@ use std::{
 use audio::Source;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use dickcord_old::{Discord, DiscordContext};
-use interface::{dashboard::DashboardView, run_ui, setup::SetupView, View};
+use interface_old::{dashboard::DashboardView, run_ui, setup::SetupView, View};
 
 use crate::audio::{AudioContext, AudioSystem};
 use state::Config;
 
 mod audio;
 mod dickcord_old;
-mod interface;
+mod interface_old;
 mod state;
 
 pub mod app;
