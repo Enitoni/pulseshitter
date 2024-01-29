@@ -19,6 +19,8 @@ use songbird::{error::JoinError, Call, SerenityInit};
 use std::sync::Arc;
 use tokio::{runtime::Runtime, sync::Mutex};
 
+type ConnectedToChannel = Arc<Mutex<Option<GuildChannel>>>;
+
 /// The bot handling logic
 pub struct Bot {
     rt: Arc<Runtime>,
@@ -32,13 +34,16 @@ pub struct Bot {
     shard_manager: Arc<Mutex<ShardManager>>,
     context: Arc<Mutex<Option<SerenityContext>>>,
 
-    connected_to_channel: Arc<Mutex<Option<GuildChannel>>>,
+    connected_to_channel: ConnectedToChannel,
 }
 
 /// The event handler for the Serenity client
 pub struct BotHandler {
     event_sender: Sender<BotEvent>,
     context: Arc<Mutex<Option<SerenityContext>>>,
+
+    target_user: TargetUser,
+    connected_to_channel: ConnectedToChannel,
 }
 
 #[derive(Clone)]
@@ -65,9 +70,16 @@ impl Bot {
     pub fn new(rt: Arc<Runtime>, config: &Config) -> Self {
         let (event_sender, event_receiver) = unbounded();
 
+        let connected_to_channel = ConnectedToChannel::default();
         let target_user = config.user_id;
         let context = Arc::new(Mutex::new(None));
-        let event_handler = BotHandler::new(context.clone(), event_sender.clone());
+
+        let event_handler = BotHandler {
+            context: context.clone(),
+            event_sender: event_sender.clone(),
+            connected_to_channel: connected_to_channel.clone(),
+            target_user,
+        };
 
         let mut client = rt.block_on(async move {
             Client::builder(&config.bot_token, intents())
@@ -87,7 +99,7 @@ impl Bot {
             event_sender,
             shard_manager,
             event_receiver,
-            connected_to_channel: Default::default(),
+            connected_to_channel,
         }
     }
 
@@ -252,15 +264,26 @@ impl EventHandler for BotHandler {
         _: Option<VoiceState>,
         new: VoiceState,
     ) {
-        todo!()
-    }
-}
+        if new.user_id != self.target_user {
+            return;
+        }
 
-impl BotHandler {
-    fn new(context: Arc<Mutex<Option<SerenityContext>>>, event_sender: Sender<BotEvent>) -> Self {
-        Self {
-            context,
-            event_sender,
+        let connected_to_channel = self.connected_to_channel.lock().await;
+
+        let new_channel = new
+            .channel_id
+            .filter(|x| Some(*x) != connected_to_channel.as_ref().map(|x| x.id));
+
+        if let Some(channel_id) = new_channel {
+            let channel = context.cache.guild_channel(channel_id);
+
+            self.event_sender
+                .send(BotEvent::TargetUserMoved(channel))
+                .unwrap();
+        } else {
+            self.event_sender
+                .send(BotEvent::TargetUserMoved(None))
+                .unwrap();
         }
     }
 }
