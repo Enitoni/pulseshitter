@@ -43,13 +43,7 @@ impl App {
 
         let audio = AudioSystem::new().map_err(AppError::PulseClient)?;
         let discord = DiscordSystem::new(rt.clone(), audio.stream());
-
-        let context = AppContext {
-            audio: audio.clone(),
-            discord: discord.clone(),
-        };
-
-        let interface = Interface::new(context, Splash);
+        let interface = Interface::new(Splash);
 
         let app = Self {
             rt,

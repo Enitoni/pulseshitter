@@ -3,8 +3,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::app::AppContext;
-
 mod view;
 pub use view::*;
 
@@ -25,17 +23,15 @@ pub const MS_PER_FRAME: f32 = 1000. / TARGET_FPS as f32;
 
 /// Handles rendering logic
 pub struct Interface {
-    context: AppContext,
     view: Mutex<BoxedView>,
 }
 
 impl Interface {
-    pub fn new<V>(context: AppContext, view: V) -> Self
+    pub fn new<V>(view: V) -> Self
     where
         V: View + 'static,
     {
         Self {
-            context,
             view: Mutex::new(BoxedView::new(view)),
         }
     }
