@@ -37,7 +37,7 @@ pub struct Interface {
 impl Interface {
     pub fn new<V>(view: V) -> Self
     where
-        V: View + 'static,
+        V: View + Sync + Send + 'static,
     {
         Self {
             view: Mutex::new(BoxedView::new(view)),
@@ -46,7 +46,7 @@ impl Interface {
 
     pub fn set_view<V>(&self, view: V)
     where
-        V: View + 'static,
+        V: View + Sync + Send + 'static,
     {
         *self.view.lock() = BoxedView::new(view)
     }

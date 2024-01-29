@@ -1,10 +1,11 @@
 use crate::{
-    app::AppContext,
+    app::{AppContext, AppEvent},
     audio::{AudioStream, Source},
     state::Config,
 };
 
 use super::{Bot, BotEvent};
+use crossbeam::channel::Sender;
 use parking_lot::Mutex;
 use serenity::model::{channel::GuildChannel, user::CurrentUser};
 use std::{default, sync::Arc, thread, time::Duration};
@@ -13,6 +14,7 @@ use tokio::runtime::Runtime;
 /// Manages all discord related things
 pub struct DiscordSystem {
     rt: Arc<Runtime>,
+    app_events: Sender<AppEvent>,
 
     bot: Mutex<Option<Arc<Bot>>>,
     state: Mutex<State>,
@@ -40,12 +42,13 @@ pub enum VoiceState {
 }
 
 impl DiscordSystem {
-    pub fn new(rt: Arc<Runtime>, stream: AudioStream) -> Arc<Self> {
+    pub fn new(rt: Arc<Runtime>, app_events: Sender<AppEvent>, stream: AudioStream) -> Arc<Self> {
         let system = Arc::new(Self {
             rt,
             stream,
             bot: Default::default(),
             state: Default::default(),
+            app_events,
         });
 
         spawn_discord_event_thread(system.clone());
@@ -74,7 +77,11 @@ impl DiscordSystem {
     }
 
     fn set_state(&self, new_state: State) {
-        *self.state.lock() = new_state
+        *self.state.lock() = new_state.clone();
+
+        self.app_events
+            .send(AppEvent::DiscordStateUpdate(new_state))
+            .unwrap();
     }
 
     fn set_voice_state(&self, new_voice_state: VoiceState) {

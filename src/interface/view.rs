@@ -8,13 +8,13 @@ pub trait View {
 }
 
 pub struct BoxedView {
-    view: Box<dyn View>,
+    view: Box<dyn View + Sync + Send>,
 }
 
 impl BoxedView {
     pub fn new<V>(view: V) -> Self
     where
-        V: View + 'static,
+        V: View + Sync + Send + 'static,
     {
         Self {
             view: Box::new(view),

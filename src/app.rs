@@ -1,10 +1,11 @@
 use crate::{
-    audio::{pulse::PulseClientError, AudioSystem},
-    dickcord::DiscordSystem,
+    audio::{pulse::PulseClientError, AudioSystem, Source},
+    dickcord::{self, DiscordSystem},
     interface::{Dashboard, Interface, Splash},
     state::Config,
 };
-use std::sync::Arc;
+use crossbeam::channel::{unbounded, Receiver, Sender};
+use std::{sync::Arc, thread};
 use thiserror::Error;
 use tokio::runtime::{Builder, Runtime};
 
@@ -14,10 +15,13 @@ pub struct App {
     interface: Interface,
     audio: Arc<AudioSystem>,
     discord: Arc<DiscordSystem>,
+
+    events: Sender<AppEvent>,
 }
 
 #[derive(Clone)]
 pub struct AppContext {
+    events: Sender<AppEvent>,
     audio: Arc<AudioSystem>,
     discord: Arc<DiscordSystem>,
 }
@@ -30,8 +34,21 @@ pub enum AppError {
     Unknown,
 }
 
+pub enum AppAction {
+    SetConfig(Config),
+    SetAudioSource(Source),
+    StopStream,
+    Exit,
+}
+
+#[allow(clippy::large_enum_variant)]
+pub enum AppEvent {
+    DiscordStateUpdate(dickcord::State),
+    Action(AppAction),
+}
+
 impl App {
-    pub fn new() -> Result<Self, AppError> {
+    pub fn new() -> Result<Arc<Self>, AppError> {
         let rt: Arc<_> = Builder::new_multi_thread()
             .worker_threads(1)
             .max_blocking_threads(1)
@@ -41,18 +58,23 @@ impl App {
             .unwrap()
             .into();
 
+        let (sender, receiver) = unbounded();
+
         let audio = AudioSystem::new().map_err(AppError::PulseClient)?;
-        let discord = DiscordSystem::new(rt.clone(), audio.stream());
+        let discord = DiscordSystem::new(rt.clone(), sender.clone(), audio.stream());
         let interface = Interface::new(Splash);
 
-        let app = Self {
+        let app = Arc::new(Self {
             rt,
             audio,
             discord,
             interface,
-        };
-        app.restore();
+            events: sender,
+        });
 
+        spawn_poll_thread(app.clone(), receiver);
+
+        app.restore();
         Ok(app)
     }
 
@@ -75,10 +97,54 @@ impl App {
 
     fn context(&self) -> AppContext {
         AppContext {
+            events: self.events.clone(),
             audio: self.audio.clone(),
             discord: self.discord.clone(),
         }
     }
+
+    fn handle_event(&self, event: AppEvent) {
+        match event {
+            AppEvent::Action(action) => self.handle_action(action),
+            AppEvent::DiscordStateUpdate(new_state) => self.handle_discord_state_update(new_state),
+        }
+    }
+
+    fn handle_discord_state_update(&self, new_state: dickcord::State) {
+        if let dickcord::State::Connected(_, _) = new_state {
+            self.interface.set_view(Dashboard::new(self.context()))
+        }
+    }
+
+    fn handle_action(&self, action: AppAction) {
+        match action {
+            AppAction::SetConfig(config) => {
+                self.discord.connect(&config);
+            }
+            AppAction::SetAudioSource(source) => {
+                self.audio.select(Some(source.clone()));
+                self.discord.announce_source_streaming(Some(source));
+            }
+            AppAction::StopStream => {
+                self.audio.select(None);
+                self.discord.announce_source_streaming(None);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn spawn_poll_thread(app: Arc<App>, receiver: Receiver<AppEvent>) {
+    let run = move || loop {
+        if let Ok(event) = receiver.recv() {
+            app.handle_event(event)
+        }
+    };
+
+    thread::Builder::new()
+        .name("pulseshitter-polling".to_string())
+        .spawn(run)
+        .unwrap();
 }
 
 impl AppContext {}
