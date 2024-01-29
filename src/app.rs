@@ -20,6 +20,7 @@ pub struct AppContext {
 
 impl App {
     // TODO: Fix this error being unit
+    #[allow(clippy::result_unit_err)]
     pub fn new() -> Result<Self, ()> {
         let rt: Arc<_> = Builder::new_multi_thread()
             .worker_threads(1)
