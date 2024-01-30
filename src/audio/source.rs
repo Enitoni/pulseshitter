@@ -110,26 +110,25 @@ impl SourceSelector {
         match operation {
             Operation::New => {
                 let selected_source = self.selected_source();
-                let new_source = source.expect("New source exists by index");
 
-                let new_as_selected = selected_source
-                    .filter(|s| !s.available() && s.compare(&new_source).is_similar_enough());
+                if let Some(new_source) = source {
+                    let new_as_selected = selected_source
+                        .filter(|s| !s.available() && s.compare(&new_source).is_similar_enough());
 
-                if let Some(selected) = new_as_selected {
-                    selected.update(new_source);
-                } else {
-                    current_sources.push(new_source);
+                    if let Some(selected) = new_as_selected {
+                        selected.update(new_source);
+                    } else {
+                        current_sources.push(new_source);
+                    }
                 }
             }
             Operation::Changed => {
-                if let Some(source) = source {
-                    existing_source
-                        .expect("Existing source exists")
-                        .update(source);
-                }
+                source.and_then(|s| existing_source.map(|e| e.update(s)));
             }
             Operation::Removed => {
-                existing_source.expect("Existing source exists").remove();
+                if let Some(e) = existing_source {
+                    e.remove()
+                }
             }
         }
 
