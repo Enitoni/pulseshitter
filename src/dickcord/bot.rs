@@ -306,12 +306,6 @@ impl EventHandler for BotHandler {
     }
 }
 
-impl Drop for Bot {
-    fn drop(&mut self) {
-        self.rt.block_on(self.stop());
-    }
-}
-
 fn intents() -> GatewayIntents {
     GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MEMBERS
