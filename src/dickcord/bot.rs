@@ -271,10 +271,18 @@ impl EventHandler for BotHandler {
     async fn voice_state_update(
         &self,
         context: SerenityContext,
-        _: Option<VoiceState>,
+        old: Option<VoiceState>,
         new: VoiceState,
     ) {
         if new.user_id != self.target_user {
+            return;
+        }
+
+        let has_changed = old
+            .map(|o| o.channel_id != new.channel_id)
+            .unwrap_or_default();
+
+        if !has_changed {
             return;
         }
 
