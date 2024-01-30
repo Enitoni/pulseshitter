@@ -94,7 +94,7 @@ impl SourceSelector {
         let new_sources: Vec<Source> = self
             .client
             .sink_inputs()
-            .expect("Gets sink inputs")
+            .unwrap_or_default()
             .into_iter()
             .map(|f| f.into())
             .collect();
