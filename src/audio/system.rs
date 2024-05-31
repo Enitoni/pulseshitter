@@ -64,7 +64,7 @@ impl AudioSystem {
         AudioStream(self.consumer.clone())
     }
 
-    pub fn status(&self) -> SinkInputStreamStatus {
+    pub fn status(&self) -> AudioStatus {
         self.stream
             .lock()
             .as_ref()
