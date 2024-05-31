@@ -3,7 +3,7 @@ use std::env;
 use std::io::Write;
 use std::{fs::File, io::Read};
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
     pub bot_token: String,
     pub user_id: u64,

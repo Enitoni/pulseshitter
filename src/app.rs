@@ -1,13 +1,14 @@
 use crate::{
     audio::{pulse::PulseClientError, AudioSystem, Source},
     dickcord::{self, DiscordSystem},
-    interface::{Dashboard, Interface, Splash},
+    interface::{Dashboard, Interface, Setup, Splash},
     state::Config,
 };
 use crossbeam::{
     atomic::AtomicCell,
     channel::{unbounded, Receiver, Sender},
 };
+use parking_lot::Mutex;
 use std::{sync::Arc, thread};
 use thiserror::Error;
 use tokio::runtime::{Builder, Runtime};
@@ -20,7 +21,7 @@ pub struct App {
     discord: Arc<DiscordSystem>,
 
     events: Sender<AppEvent>,
-    state: AtomicCell<AppState>,
+    state: Arc<Mutex<AppState>>,
 }
 
 #[derive(Clone)]
@@ -30,10 +31,11 @@ pub struct AppContext {
     discord: Arc<DiscordSystem>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone)]
 enum AppState {
-    Idle,
+    InMemoryConfig(Config),
     Exiting,
+    Idle,
 }
 
 #[derive(Error, Debug)]
@@ -80,7 +82,7 @@ impl App {
             discord,
             interface,
             events: sender,
-            state: AppState::Idle.into(),
+            state: Arc::new(AppState::Idle.into()),
         });
 
         spawn_poll_thread(app.clone(), receiver);
@@ -103,6 +105,8 @@ impl App {
         if let Some(config) = config {
             self.discord.connect(&config);
             self.interface.set_view(Dashboard::new(self.context()))
+        } else {
+            self.interface.set_view(Setup::new(self.context()))
         }
     }
 
@@ -115,7 +119,7 @@ impl App {
     }
 
     fn exit(&self) {
-        self.state.store(AppState::Exiting);
+        self.set_state(AppState::Exiting);
 
         if let dickcord::State::Connected(_, _) = self.discord.state() {
             self.discord.disconnect();
@@ -133,11 +137,15 @@ impl App {
 
     fn handle_discord_state_update(&self, new_state: dickcord::State) {
         if let dickcord::State::Connected(_, _) = new_state {
+            if let AppState::InMemoryConfig(config) = self.state() {
+                config.save();
+            }
+
             self.interface.set_view(Dashboard::new(self.context()))
         }
 
         if let dickcord::State::Idle = new_state {
-            if self.state.load() == AppState::Exiting {
+            if let AppState::Exiting = self.state() {
                 self.interface.stop();
             }
         }
@@ -146,6 +154,7 @@ impl App {
     fn handle_action(&self, action: AppAction) {
         match action {
             AppAction::SetConfig(config) => {
+                self.set_state(AppState::InMemoryConfig(config.clone()));
                 self.discord.connect(&config);
             }
             AppAction::SetAudioSource(source) => {
@@ -158,6 +167,14 @@ impl App {
             }
             AppAction::Exit => self.exit(),
         }
+    }
+
+    fn set_state(&self, state: AppState) {
+        *self.state.lock() = state;
+    }
+
+    fn state(&self) -> AppState {
+        self.state.lock().clone()
     }
 }
 
