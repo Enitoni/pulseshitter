@@ -3,6 +3,7 @@ use std::{
     thread,
     time::Duration,
 };
+use thiserror::Error;
 
 use crate::audio::SAMPLE_RATE;
 use crossbeam::channel::{unbounded, Receiver, Sender};
@@ -220,10 +221,13 @@ impl Drop for PulseClient {
     }
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum PulseClientError {
+    #[error("cannot connect to a pulseaudio-compliant server")]
     ConnectionFailed,
+    #[error("list fetching failed")]
     ListError,
+    #[error("fatal pulseaudio error: {0}")]
     Fatal(String),
 }
 

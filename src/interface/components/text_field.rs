@@ -1,20 +1,20 @@
 use crossterm::event::Event;
 use tui::{
-    layout::{Constraint, Direction, Layout},
+    buffer::Buffer,
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     widgets::{Paragraph, Widget},
 };
 use tui_textarea::TextArea;
 
-use super::ViewController;
+use crate::interface::View;
 
-/// A text field that can be focused
-pub struct Field {
+pub struct TextField {
     label: String,
     area: TextArea<'static>,
 }
 
-impl Field {
+impl TextField {
     pub fn new(label: &str) -> Self {
         let label = label.to_string();
         let area = TextArea::new(vec!["".to_string()]);
@@ -43,16 +43,8 @@ impl Field {
     }
 }
 
-impl ViewController for Field {
-    fn handle_event(&mut self, event: crossterm::event::Event) {
-        if let Event::Key(key) = event {
-            self.area.input(key);
-        }
-    }
-}
-
-impl Widget for &Field {
-    fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
+impl View for TextField {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
         let text =
             Paragraph::new(self.label.clone()).style(Style::default().add_modifier(Modifier::BOLD));
 
@@ -63,5 +55,11 @@ impl Widget for &Field {
 
         text.render(chunks[0], buf);
         self.area.widget().render(chunks[1], buf);
+    }
+
+    fn handle_event(&mut self, event: Event) {
+        if let Event::Key(key) = event {
+            self.area.input(key);
+        }
     }
 }

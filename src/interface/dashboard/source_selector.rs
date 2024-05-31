@@ -1,22 +1,24 @@
-use std::sync::Mutex;
-
 use crossterm::event::{Event, KeyCode};
+use parking_lot::Mutex;
 use tui::{
+    buffer::Buffer,
+    layout::Rect,
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::AppContext;
-use crate::{dickcord::DiscordStatus, Action};
+use crate::{
+    app::{AppAction, AppContext},
+    dickcord,
+    interface::View,
+};
 
-use super::ViewController;
-
-pub struct AppSelector {
+pub struct SourceSelector {
     context: AppContext,
     selected_index: Mutex<usize>,
 }
 
-impl AppSelector {
+impl SourceSelector {
     pub fn new(context: AppContext) -> Self {
         Self {
             context,
@@ -25,17 +27,17 @@ impl AppSelector {
     }
 
     pub fn navigate(&mut self, amount: isize) {
-        let mut selected_index = self.selected_index.lock().unwrap();
-        let app_length = self.context.audio.sources().len() as isize;
+        let mut selected_index = self.selected_index.lock();
+        let app_length = self.context.sources().len() as isize;
 
         let new_index = ((*selected_index) as isize + amount).rem_euclid(app_length);
         *selected_index = new_index as usize;
     }
 
     pub fn select(&self) {
-        let selected_source = self.context.audio.current_source();
-        let selected_index = self.selected_index.lock().unwrap();
-        let sources = self.context.audio.sources();
+        let selected_source = self.context.current_source();
+        let selected_index = self.selected_index.lock();
+        let sources = self.context.sources();
 
         if let Some(source) = sources.get(*selected_index) {
             let selected_app_index = selected_source
@@ -45,22 +47,19 @@ impl AppSelector {
 
             // Stop the stream if pressing play on the same one
             if source.index() == selected_app_index {
-                self.context.dispatch_action(Action::StopStream);
+                self.context.dispatch_action(AppAction::StopStream);
             } else {
                 self.context
-                    .dispatch_action(Action::SetAudioSource(source.to_owned()));
+                    .dispatch_action(AppAction::SetAudioSource(source.to_owned()));
             }
         }
     }
 }
 
-impl Widget for &AppSelector {
-    fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        let audio = &self.context.audio;
-        let discord = &self.context.discord;
-
+impl View for SourceSelector {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
         let block = Block::default()
-            .title("─ Applications ")
+            .title("─ Sources ")
             .border_style(Style::default().fg(Color::DarkGray))
             .borders(Borders::all());
 
@@ -72,15 +71,15 @@ impl Widget for &AppSelector {
 
         block.render(area, buf);
 
-        let sources = audio.sources();
+        let sources = self.context.sources();
 
-        let selected_index = self.selected_index.lock().unwrap();
+        let selected_index = self.selected_index.lock();
 
-        let selected_source = audio.selected_source();
-        let current_source = audio.current_source();
+        let selected_source = self.context.selected_source();
+        let current_source = self.context.current_source();
 
-        let discord_status = discord.current_status();
-        let is_discord_ready = matches!(discord_status, DiscordStatus::Active(_));
+        let discord_state = self.context.discord_state();
+        let is_discord_ready = matches!(discord_state, dickcord::State::Connected(_, _));
 
         let top = block_inner.top();
 
@@ -130,15 +129,13 @@ impl Widget for &AppSelector {
             paragraph.render(paragraph_area, buf);
         }
     }
-}
 
-impl ViewController for AppSelector {
-    fn handle_event(&mut self, event: crossterm::event::Event) {
+    fn handle_event(&mut self, event: Event) {
         {
-            let discord_status = self.context.discord.current_status();
+            let discord_state = self.context.discord_state();
 
             // Prevent selecting app before discord connects
-            if !matches!(discord_status, DiscordStatus::Active(_)) {
+            if !matches!(discord_state, dickcord::State::Connected(_, _)) {
                 return;
             }
         }

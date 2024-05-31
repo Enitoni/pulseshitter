@@ -1,18 +1,17 @@
 use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    widgets::Widget,
 };
 
-use crate::audio::AudioContext;
+use crate::{app::AppContext, interface::View};
 
 pub struct Meter {
-    audio: AudioContext,
+    context: AppContext,
 }
 
 impl Meter {
-    pub fn new(context: AudioContext) -> Self {
-        Self { audio: context }
+    pub fn new(context: AppContext) -> Self {
+        Self { context }
     }
 
     fn render_meter(&self, value: f32, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
@@ -73,9 +72,9 @@ impl Meter {
     }
 }
 
-impl Widget for &Meter {
-    fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        let (left, right) = self.audio.meter.value_ranged();
+impl View for Meter {
+    fn render(&self, area: Rect, buf: &mut tui::buffer::Buffer) {
+        let (left, right) = self.context.meter_value_ranged();
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
