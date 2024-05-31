@@ -3,6 +3,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod components;
+pub use components::*;
+
 mod view;
 pub use view::*;
 
