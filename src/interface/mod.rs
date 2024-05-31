@@ -15,6 +15,9 @@ pub use splash::*;
 mod dashboard;
 pub use dashboard::*;
 
+mod setup;
+pub use setup::*;
+
 use crossbeam::{
     atomic::AtomicCell,
     channel::{unbounded, Receiver, Sender},
