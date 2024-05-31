@@ -1,3 +1,4 @@
+use crossterm::event::Event;
 use tui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -54,5 +55,11 @@ impl View for TextField {
 
         text.render(chunks[0], buf);
         self.area.widget().render(chunks[1], buf);
+    }
+
+    fn handle_event(&mut self, event: Event) {
+        if let Event::Key(key) = event {
+            self.area.input(key);
+        }
     }
 }
