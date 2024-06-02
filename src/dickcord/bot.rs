@@ -10,6 +10,7 @@ use serenity::{
         event::ResumedEvent,
         gateway::{Activity, GatewayIntents, Ready},
         guild::Member,
+        id::UserId,
         user::CurrentUser,
         voice::VoiceState,
     },
@@ -60,6 +61,8 @@ pub enum BotEvent {
     Left,
     /// The user the bot is following connected or disconnected from a channel
     TargetUserMoved(Option<GuildChannel>),
+    // The user the bot is following started or stopped a live stream
+    TargetUserStreamStateChanged(bool),
     /// Something bad happened, duh.
     ClientError(String),
     /// An error occurred with the voice connection
@@ -203,6 +206,27 @@ impl Bot {
             })
     }
 
+    pub async fn is_target_user_streaming(&self) -> bool {
+        let context = self.context().await;
+        let channel = self.locate_target_user_channel().await;
+
+        let voice_states = channel
+            .map(|c| c.guild_id)
+            .and_then(|id| context.cache.guild(id))
+            .map(|guild| guild.voice_states);
+
+        if let Some(voice_states) = voice_states {
+            let user_id = UserId(self.target_user);
+
+            return voice_states
+                .get(&user_id)
+                .and_then(|v| v.self_stream)
+                .unwrap_or_default();
+        }
+
+        false
+    }
+
     async fn all_members_in_channels(
         &self,
         context: &SerenityContext,
@@ -279,8 +303,18 @@ impl EventHandler for BotHandler {
         }
 
         let has_changed = old
+            .as_ref()
             .map(|o| o.channel_id != new.channel_id)
             .unwrap_or_default();
+
+        let old_stream_state = old.and_then(|o| o.self_stream).unwrap_or_default();
+        let new_stream_state = new.self_stream.unwrap_or_default();
+
+        if old_stream_state != new_stream_state {
+            self.event_sender
+                .send(BotEvent::TargetUserStreamStateChanged(new_stream_state))
+                .unwrap();
+        }
 
         if !has_changed {
             return;

@@ -5,7 +5,7 @@ use crate::{
 };
 
 use super::{Bot, BotEvent};
-use crossbeam::channel::Sender;
+use crossbeam::{atomic::AtomicCell, channel::Sender};
 use parking_lot::Mutex;
 use serenity::model::{channel::GuildChannel, user::CurrentUser};
 use std::{default, sync::Arc, thread, time::Duration};
@@ -18,6 +18,7 @@ pub struct DiscordSystem {
 
     bot: Mutex<Option<Arc<Bot>>>,
     state: Mutex<State>,
+    is_streaming: AtomicCell<bool>,
 
     stream: AudioStream,
 }
@@ -48,6 +49,7 @@ impl DiscordSystem {
             stream,
             bot: Default::default(),
             state: Default::default(),
+            is_streaming: Default::default(),
             app_events,
         });
 
@@ -113,12 +115,22 @@ impl DiscordSystem {
             BotEvent::ClientError(error) => self.handle_client_error(error),
             BotEvent::VoiceError(error) => self.handle_voice_error(error),
             BotEvent::TargetUserMoved(new_channel) => self.handle_target_user_moved(new_channel),
+            BotEvent::TargetUserStreamStateChanged(new_state) => {
+                self.handle_target_user_stream_state_changed(new_state)
+            }
             BotEvent::Reconnected => {}
         }
     }
 
     fn handle_connected(&self, user: CurrentUser) {
         self.set_state(State::Connected(user, VoiceState::Idle));
+
+        let bot = self.bot_unwrapped();
+        let is_streaming = self
+            .rt
+            .block_on(async move { bot.is_target_user_streaming().await });
+
+        self.is_streaming.store(is_streaming);
         self.stream_on_demand();
     }
 
@@ -153,6 +165,11 @@ impl DiscordSystem {
                 bot.disconnect_from_channel().await.ok();
             });
         }
+    }
+
+    fn handle_target_user_stream_state_changed(&self, new_state: bool) {
+        self.is_streaming.store(new_state);
+        self.stream_on_demand();
     }
 
     fn bot_unwrapped(&self) -> Arc<Bot> {
