@@ -1,3 +1,5 @@
+use crossterm::event::{Event, KeyCode};
+use enum_iterator::{next_cycle, Sequence};
 use tui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -14,6 +16,9 @@ use meter::*;
 mod discord_module;
 use discord_module::*;
 
+mod settings_module;
+use settings_module::*;
+
 use crate::app::AppContext;
 
 use super::{View, LOGO};
@@ -23,17 +28,28 @@ pub struct Dashboard {
 }
 
 pub struct Content {
-    selector: SourceSelector,
+    selector_module: SourceSelector,
     discord_module: DiscordModule,
+    settings_module: SettingsModule,
+    focused_module: FocusedModule,
     meter: Meter,
+}
+
+#[derive(Debug, Default, PartialEq, Sequence)]
+enum FocusedModule {
+    #[default]
+    SourceSelector,
+    SettingsModule,
 }
 
 impl Dashboard {
     pub fn new(context: AppContext) -> Self {
         Self {
             content: Content {
-                selector: SourceSelector::new(context.clone()),
+                selector_module: SourceSelector::new(context.clone()),
                 discord_module: DiscordModule::new(context.clone()),
+                settings_module: SettingsModule::new(context.clone()),
+                focused_module: Default::default(),
                 meter: Meter::new(context),
             },
         }
@@ -98,6 +114,20 @@ impl View for Dashboard {
     }
 }
 
+impl Content {
+    fn cycle_focus(&mut self) {
+        self.focused_module = next_cycle(&self.focused_module).expect("Implements sequence");
+
+        self.selector_module.blur();
+        self.settings_module.blur();
+
+        match self.focused_module {
+            FocusedModule::SourceSelector => self.selector_module.focus(),
+            FocusedModule::SettingsModule => self.settings_module.focus(),
+        }
+    }
+}
+
 impl View for Content {
     fn render(&self, area: Rect, buf: &mut Buffer) {
         let chunks = Layout::default()
@@ -132,8 +162,8 @@ impl View for Content {
             ])
             .split(sidebar_area);
 
-        self.selector.render(main_chunks[0], buf);
-        //self.audio_module.render(sidebar_chunks[1], buf);
+        self.selector_module.render(main_chunks[0], buf);
+        self.settings_module.render(sidebar_chunks[1], buf);
         self.discord_module.render(sidebar_chunks[0], buf);
 
         let mut meter_area = chunks[1];
@@ -144,7 +174,17 @@ impl View for Content {
         self.meter.render(meter_area, buf);
     }
 
-    fn handle_event(&mut self, event: crossterm::event::Event) {
-        self.selector.handle_event(event)
+    fn handle_event(&mut self, event: Event) {
+        if let Event::Key(key) = event {
+            if key.code == KeyCode::Tab || key.code == KeyCode::Right || key.code == KeyCode::Left {
+                self.cycle_focus();
+                return;
+            }
+        }
+
+        match self.focused_module {
+            FocusedModule::SourceSelector => self.selector_module.handle_event(event),
+            FocusedModule::SettingsModule => self.settings_module.handle_event(event),
+        }
     }
 }
