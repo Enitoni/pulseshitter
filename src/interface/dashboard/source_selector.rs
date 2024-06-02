@@ -16,6 +16,7 @@ use crate::{
 pub struct SourceSelector {
     context: AppContext,
     selected_index: Mutex<usize>,
+    focused: bool,
 }
 
 impl SourceSelector {
@@ -23,6 +24,7 @@ impl SourceSelector {
         Self {
             context,
             selected_index: Default::default(),
+            focused: false,
         }
     }
 
@@ -53,6 +55,14 @@ impl SourceSelector {
                     .dispatch_action(AppAction::SetAudioSource(source.to_owned()));
             }
         }
+    }
+
+    pub fn focus(&mut self) {
+        self.focused = true;
+    }
+
+    pub fn blur(&mut self) {
+        self.focused = false;
     }
 }
 
@@ -103,7 +113,7 @@ impl View for SourceSelector {
                 1,
             );
 
-            let symbol = if !is_discord_ready {
+            let symbol = if !is_discord_ready || !self.focused {
                 IDLE_SYMBOL
             } else if is_over {
                 HOVER_SYMBOL
