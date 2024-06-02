@@ -12,6 +12,7 @@ pub struct Config {
     pub screen_share_only: bool,
 }
 
+#[derive(Debug, Clone)]
 pub struct ReadOnlyConfig {
     pub bot_token: String,
     pub user_id: u64,
