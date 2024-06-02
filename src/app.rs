@@ -52,6 +52,7 @@ pub enum AppError {
 pub enum AppAction {
     SetConfig(Config),
     SetAudioSource(Source),
+    ToggleScreenshareOnly,
     ToggleMeter,
     StopStream,
     RedoSetup,
@@ -166,6 +167,13 @@ impl App {
                 self.discord.disconnect();
                 self.interface.set_view(Setup::new(self.context()));
             }
+            AppAction::ToggleScreenshareOnly => {
+                self.edit_config(|config| {
+                    config.screen_share_only = !config.screen_share_only;
+                });
+
+                self.discord.set_config(self.read_only_config());
+            }
             AppAction::ToggleMeter => {
                 self.edit_config(|config| {
                     config.show_meter = !config.show_meter;
@@ -211,6 +219,15 @@ impl App {
             cb(config);
             config.save();
         }
+    }
+
+    fn read_only_config(&self) -> ReadOnlyConfig {
+        let config = self.config.lock();
+
+        config
+            .as_ref()
+            .expect("Config is set when config() is called on AppContext")
+            .read_only()
     }
 }
 

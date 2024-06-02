@@ -46,7 +46,7 @@ impl SettingsModule {
                     context.clone(),
                     "Screenshare Only".to_owned(),
                     OptionKind::Switch(config.screen_share_only),
-                    AppAction::Exit,
+                    AppAction::ToggleScreenshareOnly,
                 ),
                 Option::new(
                     context.clone(),
