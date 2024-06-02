@@ -22,6 +22,8 @@ pub struct App {
 
     events: Sender<AppEvent>,
     state: Arc<Mutex<AppState>>,
+
+    config: Arc<Mutex<Option<Config>>>,
 }
 
 #[derive(Clone)]
@@ -33,7 +35,6 @@ pub struct AppContext {
 
 #[derive(Debug, Clone)]
 enum AppState {
-    InMemoryConfig(Config),
     Exiting,
     Idle,
 }
@@ -46,10 +47,12 @@ pub enum AppError {
     Unknown,
 }
 
+#[derive(Debug, Clone)]
 pub enum AppAction {
     SetConfig(Config),
     SetAudioSource(Source),
     StopStream,
+    RedoSetup,
     Exit,
 }
 
@@ -72,6 +75,7 @@ impl App {
 
         let (sender, receiver) = unbounded();
 
+        let config = Config::restore();
         let audio = AudioSystem::new().map_err(AppError::PulseClient)?;
         let discord = DiscordSystem::new(rt.clone(), sender.clone(), audio.stream());
         let interface = Interface::new(Splash, sender.clone());
@@ -83,6 +87,7 @@ impl App {
             interface,
             events: sender,
             state: Arc::new(AppState::Idle.into()),
+            config: Arc::new(Mutex::new(config)),
         });
 
         spawn_poll_thread(app.clone(), receiver);
@@ -137,10 +142,7 @@ impl App {
 
     fn handle_discord_state_update(&self, new_state: dickcord::State) {
         if let dickcord::State::Connected(_, _) = new_state {
-            if let AppState::InMemoryConfig(config) = self.state() {
-                config.save();
-            }
-
+            self.save_config();
             self.interface.set_view(Dashboard::new(self.context()))
         }
 
@@ -154,8 +156,12 @@ impl App {
     fn handle_action(&self, action: AppAction) {
         match action {
             AppAction::SetConfig(config) => {
-                self.set_state(AppState::InMemoryConfig(config.clone()));
                 self.discord.connect(&config);
+                self.set_config(config);
+            }
+            AppAction::RedoSetup => {
+                self.discord.disconnect();
+                self.interface.set_view(Setup::new(self.context()));
             }
             AppAction::SetAudioSource(source) => {
                 self.audio.select(Some(source.clone()));
@@ -175,6 +181,28 @@ impl App {
 
     fn state(&self) -> AppState {
         self.state.lock().clone()
+    }
+
+    fn set_config(&self, config: Config) {
+        let mut previous_config = self.config.lock();
+        *previous_config = Some(config);
+    }
+
+    fn save_config(&self) {
+        let config = self.config.lock();
+
+        if let Some(config) = config.as_ref() {
+            config.save();
+        }
+    }
+
+    fn edit_config(&self, cb: impl FnOnce(&mut Config)) {
+        let mut config = self.config.lock();
+
+        if let Some(config) = config.as_mut() {
+            cb(config);
+            config.save();
+        }
     }
 }
 
