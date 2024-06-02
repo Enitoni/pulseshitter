@@ -92,7 +92,7 @@ impl View for Dashboard {
         let logo = Paragraph::new(LOGO).alignment(Alignment::Center);
 
         let footer_style = Style::default().fg(Color::DarkGray);
-        let copyright = Paragraph::new("© 2023 Enitoni, Some rights reserved.")
+        let copyright = Paragraph::new("© 2024 Enitoni, Some rights reserved.")
             .alignment(Alignment::Left)
             .style(footer_style);
 
