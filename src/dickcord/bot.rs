@@ -93,7 +93,15 @@ impl Bot {
         });
 
         let shard_manager = client.shard_manager.clone();
-        rt.spawn(async move { client.start().await });
+        let inner_event_sender = event_sender.clone();
+
+        rt.spawn(async move {
+            if let Err(e) = client.start().await {
+                inner_event_sender
+                    .send(BotEvent::ClientError(e.to_string()))
+                    .unwrap();
+            }
+        });
 
         Self {
             rt,
