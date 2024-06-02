@@ -95,12 +95,15 @@ impl DiscordSystem {
         let audio = self.stream.clone();
         let config = self.config_unwrapped();
         let state = self.state.lock().clone();
+        let bot = self.bot_unwrapped();
 
         if config.screen_share_only {
             let is_streaming = self.is_streaming.load();
 
             if state.is_connected() && !is_streaming {
-                self.disconnect();
+                self.rt
+                    .spawn(async move { bot.disconnect_from_channel().await.ok() });
+
                 return;
             }
 
@@ -109,7 +112,6 @@ impl DiscordSystem {
             }
         }
 
-        let bot = self.bot_unwrapped();
         self.rt
             .spawn(async move { bot.attempt_join_and_stream(audio).await });
     }
