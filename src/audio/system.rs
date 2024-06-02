@@ -10,14 +10,10 @@ use songbird::input::{reader::MediaSource, Codec, Container, Input, Reader};
 
 use super::{
     analysis::{raw_samples_from_bytes, spawn_analysis_thread, StereoMeter},
-    pulse::{
-        PulseClient, PulseClientError, PulseClientEvent, SinkInputStream, SinkInputStreamStatus,
-    },
+    pulse::{PulseClient, PulseClientError, PulseClientEvent, SinkInputStream},
     source::{Source, SourceSelector},
     AudioConsumer, AudioProducer, BUFFER_SIZE, SAMPLE_IN_BYTES,
 };
-
-pub type AudioStatus = SinkInputStreamStatus;
 
 /// Manages all audio related stuff
 pub struct AudioSystem {
@@ -62,14 +58,6 @@ impl AudioSystem {
 
     pub fn stream(&self) -> AudioStream {
         AudioStream(self.consumer.clone())
-    }
-
-    pub fn status(&self) -> AudioStatus {
-        self.stream
-            .lock()
-            .as_ref()
-            .map(|x| x.status())
-            .unwrap_or_default()
     }
 
     pub fn sources(&self) -> Vec<Source> {

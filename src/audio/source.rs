@@ -1,3 +1,6 @@
+// TODO: Remove this once the dead code is used
+#![allow(unused)]
+
 use super::pulse::{PulseClient, SinkInput};
 use crossbeam::atomic::AtomicCell;
 use lazy_static::lazy_static;
@@ -170,7 +173,7 @@ impl Source {
     fn update(&self, incoming: Source) {
         self.age.store(Instant::now());
 
-        *self.name.write() = incoming.name.read().clone();
+        self.name.write().clone_from(&incoming.name.read());
         *self.sink_input.lock() = incoming.sink_input.lock().clone();
 
         self.volume.store(incoming.volume.load());

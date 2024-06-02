@@ -24,8 +24,6 @@ type ConnectedToChannel = Arc<Mutex<Option<GuildChannel>>>;
 
 /// The bot handling logic
 pub struct Bot {
-    rt: Arc<Runtime>,
-
     event_sender: Sender<BotEvent>,
     event_receiver: Receiver<BotEvent>,
 
@@ -104,7 +102,6 @@ impl Bot {
         });
 
         Self {
-            rt,
             context,
             target_user,
             event_sender,

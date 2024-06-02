@@ -4,18 +4,13 @@ use crate::{
     interface::{Dashboard, Interface, Setup, Splash},
     state::{Config, ReadOnlyConfig},
 };
-use crossbeam::{
-    atomic::AtomicCell,
-    channel::{unbounded, Receiver, Sender},
-};
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use parking_lot::Mutex;
 use std::{sync::Arc, thread};
 use thiserror::Error;
-use tokio::runtime::{Builder, Runtime};
+use tokio::runtime::Builder;
 
 pub struct App {
-    rt: Arc<Runtime>,
-
     interface: Interface,
     audio: Arc<AudioSystem>,
     discord: Arc<DiscordSystem>,
@@ -44,8 +39,6 @@ enum AppState {
 pub enum AppError {
     #[error(transparent)]
     PulseClient(#[from] PulseClientError),
-    #[error("Unknown error")]
-    Unknown,
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +77,6 @@ impl App {
         let interface = Interface::new(Splash, sender.clone());
 
         let app = Arc::new(Self {
-            rt,
             audio,
             discord,
             interface,

@@ -1,3 +1,6 @@
+// TODO: Remove this once the dead code is used
+#![allow(unused)]
+
 use std::{
     sync::{mpsc, Arc},
     thread,

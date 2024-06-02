@@ -1,5 +1,5 @@
 use crate::{
-    app::{AppContext, AppEvent},
+    app::AppEvent,
     audio::{AudioStream, Source},
     state::{Config, ReadOnlyConfig},
 };
@@ -7,9 +7,8 @@ use crate::{
 use super::{Bot, BotEvent};
 use crossbeam::{atomic::AtomicCell, channel::Sender};
 use parking_lot::Mutex;
-use serde_json::de::Read;
 use serenity::model::{channel::GuildChannel, user::CurrentUser};
-use std::{default, sync::Arc, thread, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 use tokio::runtime::Runtime;
 
 /// Manages all discord related things

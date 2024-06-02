@@ -145,14 +145,6 @@ impl StereoMeter {
         self.right.drain(amount);
     }
 
-    pub fn value(&self) -> (f32, f32) {
-        (self.left.value(), self.right.value())
-    }
-
-    pub fn dbfs(&self) -> (f32, f32) {
-        (self.left.dbfs(), self.right.dbfs())
-    }
-
     pub fn value_ranged(&self) -> (f32, f32) {
         (self.left.value_ranged(), self.right.value_ranged())
     }
