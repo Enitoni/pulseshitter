@@ -45,9 +45,12 @@ enum FocusedModule {
 
 impl Dashboard {
     pub fn new(context: AppContext) -> Self {
+        let mut selector_module = SourceSelector::new(context.clone());
+        selector_module.focus();
+
         Self {
             content: Content {
-                selector_module: SourceSelector::new(context.clone()),
+                selector_module,
                 discord_module: DiscordModule::new(context.clone()),
                 settings_module: SettingsModule::new(context.clone()),
                 focused_module: Default::default(),
