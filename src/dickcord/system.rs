@@ -199,6 +199,11 @@ impl DiscordSystem {
             .expect("bot_unwrapped() is not called when there is not a bot")
     }
 
+    pub fn set_config(&self, config: ReadOnlyConfig) {
+        *self.config.lock() = Some(config);
+        self.stream_on_demand();
+    }
+
     fn config_unwrapped(&self) -> ReadOnlyConfig {
         self.config
             .lock()
