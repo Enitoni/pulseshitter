@@ -32,25 +32,27 @@ pub struct SettingsModule {
 
 impl SettingsModule {
     pub fn new(context: AppContext) -> Self {
+        let config = context.config();
+
         Self {
             options: vec![
                 Option::new(
                     context.clone(),
                     "Show Meter".to_owned(),
-                    OptionKind::Switch(false),
-                    AppAction::Exit,
+                    OptionKind::Switch(config.show_meter),
+                    AppAction::ToggleMeter,
                 ),
                 Option::new(
                     context.clone(),
                     "Screenshare Only".to_owned(),
-                    OptionKind::Switch(false),
+                    OptionKind::Switch(config.screen_share_only),
                     AppAction::Exit,
                 ),
                 Option::new(
                     context.clone(),
                     "Redo Setup".to_owned(),
                     OptionKind::Button,
-                    AppAction::Exit,
+                    AppAction::RedoSetup,
                 ),
             ],
             focused: false,
