@@ -12,6 +12,13 @@ pub struct Config {
     pub screen_share_only: bool,
 }
 
+pub struct ReadOnlyConfig {
+    pub bot_token: String,
+    pub user_id: u64,
+    pub show_meter: bool,
+    pub screen_share_only: bool,
+}
+
 impl Config {
     fn path() -> String {
         let config_dir = env::var("XDG_CONFIG_HOME")
@@ -48,6 +55,15 @@ impl Config {
                     .and_then(|mut f| write!(f, "{}", result).ok());
             }
             Err(err) => eprintln!("Config save failed: {:?}", err),
+        }
+    }
+
+    pub fn read_only(&self) -> ReadOnlyConfig {
+        ReadOnlyConfig {
+            bot_token: self.bot_token.clone(),
+            user_id: self.user_id,
+            show_meter: self.show_meter,
+            screen_share_only: self.screen_share_only,
         }
     }
 }

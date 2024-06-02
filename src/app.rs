@@ -2,7 +2,7 @@ use crate::{
     audio::{pulse::PulseClientError, AudioSystem, Source},
     dickcord::{self, DiscordSystem},
     interface::{Dashboard, Interface, Setup, Splash},
-    state::Config,
+    state::{Config, ReadOnlyConfig},
 };
 use crossbeam::{
     atomic::AtomicCell,
@@ -31,6 +31,7 @@ pub struct AppContext {
     events: Sender<AppEvent>,
     audio: Arc<AudioSystem>,
     discord: Arc<DiscordSystem>,
+    config: Arc<Mutex<Option<Config>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +52,7 @@ pub enum AppError {
 pub enum AppAction {
     SetConfig(Config),
     SetAudioSource(Source),
+    ToggleMeter,
     StopStream,
     RedoSetup,
     Exit,
@@ -120,6 +122,7 @@ impl App {
             events: self.events.clone(),
             audio: self.audio.clone(),
             discord: self.discord.clone(),
+            config: self.config.clone(),
         }
     }
 
@@ -162,6 +165,11 @@ impl App {
             AppAction::RedoSetup => {
                 self.discord.disconnect();
                 self.interface.set_view(Setup::new(self.context()));
+            }
+            AppAction::ToggleMeter => {
+                self.edit_config(|config| {
+                    config.show_meter = !config.show_meter;
+                });
             }
             AppAction::SetAudioSource(source) => {
                 self.audio.select(Some(source.clone()));
@@ -242,5 +250,14 @@ impl AppContext {
 
     pub fn discord_state(&self) -> dickcord::State {
         self.discord.state()
+    }
+
+    pub fn config(&self) -> ReadOnlyConfig {
+        let config = self.config.lock();
+
+        config
+            .as_ref()
+            .expect("Config is set when config() is called on AppContext")
+            .read_only()
     }
 }
