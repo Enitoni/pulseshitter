@@ -1,12 +1,13 @@
 use crate::{
     app::{AppContext, AppEvent},
     audio::{AudioStream, Source},
-    state::Config,
+    state::{Config, ReadOnlyConfig},
 };
 
 use super::{Bot, BotEvent};
 use crossbeam::{atomic::AtomicCell, channel::Sender};
 use parking_lot::Mutex;
+use serde_json::de::Read;
 use serenity::model::{channel::GuildChannel, user::CurrentUser};
 use std::{default, sync::Arc, thread, time::Duration};
 use tokio::runtime::Runtime;
@@ -20,6 +21,7 @@ pub struct DiscordSystem {
     state: Mutex<State>,
     is_streaming: AtomicCell<bool>,
 
+    config: Mutex<Option<ReadOnlyConfig>>,
     stream: AudioStream,
 }
 
@@ -50,6 +52,7 @@ impl DiscordSystem {
             bot: Default::default(),
             state: Default::default(),
             is_streaming: Default::default(),
+            config: Default::default(),
             app_events,
         });
 
@@ -61,6 +64,8 @@ impl DiscordSystem {
         let bot = Bot::new(self.rt.clone(), config).into();
 
         *self.bot.lock() = Some(bot);
+        *self.config.lock() = Some(config.read_only());
+
         self.set_state(State::Connecting);
     }
 
@@ -87,9 +92,24 @@ impl DiscordSystem {
     }
 
     fn stream_on_demand(&self) {
-        let bot = self.bot_unwrapped();
         let audio = self.stream.clone();
+        let config = self.config_unwrapped();
+        let state = self.state.lock().clone();
 
+        if config.screen_share_only {
+            let is_streaming = self.is_streaming.load();
+
+            if state.is_connected() && !is_streaming {
+                self.disconnect();
+                return;
+            }
+
+            if !is_streaming {
+                return;
+            }
+        }
+
+        let bot = self.bot_unwrapped();
         self.rt
             .spawn(async move { bot.attempt_join_and_stream(audio).await });
     }
@@ -177,6 +197,13 @@ impl DiscordSystem {
             .lock()
             .clone()
             .expect("bot_unwrapped() is not called when there is not a bot")
+    }
+
+    fn config_unwrapped(&self) -> ReadOnlyConfig {
+        self.config
+            .lock()
+            .clone()
+            .expect("config_unwrapped() is not called when there is not a config")
     }
 }
 
