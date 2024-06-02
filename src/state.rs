@@ -7,6 +7,9 @@ use std::{fs::File, io::Read};
 pub struct Config {
     pub bot_token: String,
     pub user_id: u64,
+
+    pub show_meter: bool,
+    pub screen_share_only: bool,
 }
 
 impl Config {
@@ -19,7 +22,12 @@ impl Config {
     }
 
     pub fn new(bot_token: String, user_id: u64) -> Self {
-        Self { bot_token, user_id }
+        Self {
+            bot_token,
+            user_id,
+            show_meter: true,
+            screen_share_only: false,
+        }
     }
 
     pub fn restore() -> Option<Self> {
