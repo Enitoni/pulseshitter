@@ -100,6 +100,7 @@ impl DiscordSystem {
             let is_streaming = self.is_streaming.load();
 
             if state.is_connected() && !is_streaming {
+                self.set_voice_state(VoiceState::Idle);
                 self.rt
                     .spawn(async move { bot.disconnect_from_channel().await.ok() });
 
