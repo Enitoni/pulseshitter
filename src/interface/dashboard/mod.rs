@@ -28,6 +28,7 @@ pub struct Dashboard {
 }
 
 pub struct Content {
+    context: AppContext,
     selector_module: SourceSelector,
     discord_module: DiscordModule,
     settings_module: SettingsModule,
@@ -50,7 +51,8 @@ impl Dashboard {
                 discord_module: DiscordModule::new(context.clone()),
                 settings_module: SettingsModule::new(context.clone()),
                 focused_module: Default::default(),
-                meter: Meter::new(context),
+                meter: Meter::new(context.clone()),
+                context,
             },
         }
     }
@@ -130,12 +132,17 @@ impl Content {
 
 impl View for Content {
     fn render(&self, area: Rect, buf: &mut Buffer) {
+        let config = self.context.config();
+
+        let mut chunk_constraints = vec![Constraint::Length(area.height.saturating_sub(5))];
+
+        if config.show_meter {
+            chunk_constraints.push(Constraint::Length(4))
+        }
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(area.height.saturating_sub(5)),
-                Constraint::Length(4),
-            ])
+            .constraints(chunk_constraints)
             .split(area);
 
         let main_chunks = Layout::default()
@@ -166,12 +173,14 @@ impl View for Content {
         self.settings_module.render(sidebar_chunks[1], buf);
         self.discord_module.render(sidebar_chunks[0], buf);
 
-        let mut meter_area = chunks[1];
-        meter_area.x += 1;
-        meter_area.y += 1;
-        meter_area.width -= 1;
+        if config.show_meter {
+            let mut meter_area = chunks[1];
+            meter_area.x += 1;
+            meter_area.y += 1;
+            meter_area.width -= 1;
 
-        self.meter.render(meter_area, buf);
+            self.meter.render(meter_area, buf);
+        }
     }
 
     fn handle_event(&mut self, event: Event) {
