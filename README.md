@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/github/license/Enitoni/pulseshitter.svg?style=flat)](https://github.com/Enitoni/pulseshitter/blob/main/LICENSE)
 
-![Screenshot of pulseshitter](screenshot.webp)
+![Screenshot of pulseshitter](preview.gif)
 
 pulseshitter is a shitty solution to a shitty problem.
 
@@ -20,7 +20,7 @@ this overengineered project is a workaround to make it possible to share audio v
 ## features
 
 - shits your audio into a voice channel
-- based terminal user interface
+- based text-based user interface
 - automatically reconnects to an application when parec stops streaming it (it does that a lot)
 - cool good sound meter™️
 - follows you around so you can always bother your friends
@@ -38,7 +38,6 @@ this overengineered project is a workaround to make it possible to share audio v
 
 - [linux](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git) (duh)
 - [pulseaudio](https://www.freedesktop.org/wiki/Software/PulseAudio/) or [pipewire](https://pipewire.org)
-- [parec](https://manpages.debian.org/testing/pulseaudio-utils/parec.1.en.html)
 - [discord bot](https://google.com/search?q=discord+bot+token+generator)
 
 
