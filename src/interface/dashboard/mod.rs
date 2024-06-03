@@ -19,12 +19,16 @@ use discord_module::*;
 mod settings_module;
 use settings_module::*;
 
+mod version;
+use version::*;
+
 use crate::app::AppContext;
 
 use super::{View, LOGO};
 
 pub struct Dashboard {
     content: Content,
+    version: Version,
 }
 
 pub struct Content {
@@ -49,6 +53,7 @@ impl Dashboard {
         selector_module.focus();
 
         Self {
+            version: Version::new(context.clone()),
             content: Content {
                 selector_module,
                 discord_module: DiscordModule::new(context.clone()),
@@ -96,10 +101,6 @@ impl View for Dashboard {
             .alignment(Alignment::Left)
             .style(footer_style);
 
-        let version = Paragraph::new(format!("v{}", env!("CARGO_PKG_VERSION")))
-            .alignment(Alignment::Right)
-            .style(footer_style);
-
         let footer_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -111,7 +112,7 @@ impl View for Dashboard {
         self.content.render(chunks[1], buf);
 
         copyright.render(footer_chunks[0], buf);
-        version.render(footer_chunks[1], buf);
+        self.version.render(footer_chunks[1], buf);
     }
 
     fn handle_event(&mut self, event: crossterm::event::Event) {

@@ -6,11 +6,18 @@ use crate::{
 };
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use parking_lot::Mutex;
+use reqwest::ClientBuilder;
+use serde::Deserialize;
 use std::{sync::Arc, thread};
 use thiserror::Error;
-use tokio::runtime::Builder;
+use tokio::runtime::{Builder, Runtime};
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+const LATEST_RELEASE_URL: &str =
+    "https://api.github.com/repos/enitoni/pulseshitter/releases/latest";
 
 pub struct App {
+    rt: Arc<Runtime>,
     interface: Interface,
     audio: Arc<AudioSystem>,
     discord: Arc<DiscordSystem>,
@@ -19,6 +26,7 @@ pub struct App {
     state: Arc<Mutex<AppState>>,
 
     config: Arc<Mutex<Option<Config>>>,
+    update_available: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Clone)]
@@ -27,6 +35,7 @@ pub struct AppContext {
     audio: Arc<AudioSystem>,
     discord: Arc<DiscordSystem>,
     config: Arc<Mutex<Option<Config>>>,
+    update_available: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,16 +86,19 @@ impl App {
         let interface = Interface::new(Splash, sender.clone());
 
         let app = Arc::new(Self {
+            rt,
             audio,
             discord,
             interface,
             events: sender,
             state: Arc::new(AppState::Idle.into()),
             config: Arc::new(Mutex::new(config)),
+            update_available: Default::default(),
         });
 
         spawn_poll_thread(app.clone(), receiver);
 
+        app.check_for_update();
         app.restore();
         Ok(app)
     }
@@ -116,6 +128,7 @@ impl App {
             audio: self.audio.clone(),
             discord: self.discord.clone(),
             config: self.config.clone(),
+            update_available: self.update_available.clone(),
         }
     }
 
@@ -221,6 +234,18 @@ impl App {
             .expect("Config is set when config() is called on AppContext")
             .read_only()
     }
+
+    fn check_for_update(&self) {
+        let update_available = self.update_available.clone();
+
+        self.rt.spawn(async move {
+            let new_version = fetch_update().await;
+
+            if let Some(new_version) = new_version {
+                *update_available.lock() = Some(new_version);
+            }
+        });
+    }
 }
 
 fn spawn_poll_thread(app: Arc<App>, receiver: Receiver<AppEvent>) {
@@ -269,4 +294,35 @@ impl AppContext {
             .expect("Config is set when config() is called on AppContext")
             .read_only()
     }
+
+    pub fn update_available(&self) -> Option<String> {
+        self.update_available.lock().clone()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct LatestRelease {
+    tag_name: String,
+}
+
+async fn fetch_update() -> Option<String> {
+    let client = ClientBuilder::new()
+        .user_agent("enitoni/pulseshitter")
+        .build()
+        .unwrap();
+
+    let release: LatestRelease = client
+        .get(LATEST_RELEASE_URL)
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+
+    if release.tag_name != format!("v{}", VERSION) {
+        return Some(release.tag_name);
+    }
+
+    None
 }
